@@ -1,0 +1,57 @@
+# Global Maintenance Pipeline — Gemini CLI 정책 (마스터: ~/.ai-global-pipeline.md)
+# Node 3 검증 루프 명령은 자동 허용, Node 4 승인 게이트 대상은 항상 사용자 확인.
+# 높은 priority가 이긴다. 게이트(900)가 허용(100)보다 위에 있어야 한다.
+
+# ---- Node 4 승인 게이트: 원격 반영·이력 변경·삭제 ----
+[[rule]]
+toolName = "run_shell_command"
+commandPrefix = ["git push", "git merge ", "git rebase", "git reset --hard", "git clean", "git branch -D", "glab mr", "rm ", "Remove-Item", "del ", "rmdir "]
+decision = "ask_user"
+priority = 900
+
+# ---- Node 4 승인 게이트: 커밋 안 된 작업 폐기 (게이트 훅 GATED 와 같은 기준) ----
+# checkout -- <파일> / checkout . / checkout -f·--force, restore(--staged 만 쓰면 제외, --worktree 는 포함),
+# stash drop·clear. commandPrefix 로는 --track·--staged 같은 정상 옵션을 구분할 수 없어 정규식을 쓴다.
+# Gemini 는 중첩 반복자 정규식을 ReDoS 위험으로 거부하므로(정책 파일 오류) 단순 정규식 여러 개로 나눈다.
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "\\bgit\\b[^;&|\\n]*\\scheckout(?![-\\w])[^;&|\\n]*\\s(?:--|\\.|-f|--force)(?:\\s|$)"
+decision = "ask_user"
+priority = 900
+
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "\\bgit\\b[^;&|\\n]*\\srestore(?![-\\w])(?![^;&|\\n]*(?:--staged|\\s-S\\b))"
+decision = "ask_user"
+priority = 900
+
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "\\bgit\\b[^;&|\\n]*\\srestore(?![-\\w])[^;&|\\n]*(?:--worktree|\\s-W\\b)"
+decision = "ask_user"
+priority = 900
+
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "\\bgit\\b[^;&|\\n]*\\sstash\\s+(?:drop|clear)\\b"
+decision = "ask_user"
+priority = 900
+
+# ---- Node 3 검증 루프: 조회·브랜치 생성·빌드/테스트 ----
+[[rule]]
+toolName = "run_shell_command"
+commandPrefix = ["git status", "git diff", "git log", "git show", "git rev-parse", "git branch --show-current"]
+decision = "allow"
+priority = 100
+
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "^git (checkout -b|switch -c) (feat|fix|refactor|test|docs|build)/\\S+$"
+decision = "allow"
+priority = 100
+
+[[rule]]
+toolName = "run_shell_command"
+commandPrefix = ["npm run build", "npm run lint", "npm test", "mvn compile", "mvn test", "./mvnw compile", "./mvnw test", ".\\mvnw.cmd compile", ".\\mvnw.cmd test", "./gradlew check", "./gradlew test", ".\\gradlew.bat check", ".\\gradlew.bat test", "pytest"]
+decision = "allow"
+priority = 100

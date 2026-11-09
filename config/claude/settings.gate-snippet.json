@@ -1,0 +1,247 @@
+{
+  "permissions": {
+    "ask": [
+      "Bash(git push *)",
+      "Bash(git merge *)",
+      "Bash(git rebase *)",
+      "Bash(git reset --hard *)",
+      "Bash(git branch -D *)",
+      "Bash(git branch -d *)",
+      "Bash(git clean *)",
+      "Bash(glab mr *)",
+      "Bash(glab api *)",
+      "Bash(rm *)",
+      "PowerShell(git push *)",
+      "PowerShell(git merge *)",
+      "PowerShell(git rebase *)",
+      "PowerShell(git reset --hard *)",
+      "PowerShell(git branch -D *)",
+      "PowerShell(git branch -d *)",
+      "PowerShell(git clean *)",
+      "PowerShell(glab mr *)",
+      "PowerShell(glab api *)",
+      "PowerShell(rm *)",
+      "PowerShell(Remove-Item *)",
+      "PowerShell(del *)",
+      "PowerShell(rmdir *)",
+      "Bash(git checkout -- *)",
+      "Bash(git checkout . *)",
+      "Bash(git checkout -f *)",
+      "Bash(git checkout --force *)",
+      "Bash(git stash drop *)",
+      "Bash(git stash clear *)",
+      "PowerShell(git checkout -- *)",
+      "PowerShell(git checkout . *)",
+      "PowerShell(git checkout -f *)",
+      "PowerShell(git checkout --force *)",
+      "PowerShell(git stash drop *)",
+      "PowerShell(git stash clear *)"
+    ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/orca-agent-hook.exe claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/orca-agent-hook.exe claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/orca-agent-hook.exe claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/orca-agent-hook.exe claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/orca-agent-hook.exe claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "TeammateIdle": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/orca-agent-hook.exe claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:/Users/<you>/.claude/hooks/node4-approval-gate.py\"",
+            "timeout": 10,
+            "statusMessage": "Node 4 승인 게이트 확인"
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/orca-agent-hook.exe claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:/Users/<you>/.ai-gate/sync_test_hook.py\"",
+            "timeout": 150,
+            "statusMessage": "게이트 훅 동기화 확인"
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/orca-agent-hook.exe claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/orca-agent-hook.exe claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/orca-agent-hook.exe claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/orca-agent-hook.exe claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/orca-agent-hook.exe claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/orca-agent-hook.exe claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Elicitation": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/orca-agent-hook.exe claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "ElicitationResult": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/orca-agent-hook.exe claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolBatch": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/orca-agent-hook.exe claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

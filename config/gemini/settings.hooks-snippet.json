@@ -1,0 +1,59 @@
+{
+  "hooks": {
+    "BeforeAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/gemini-hook.cmd",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "AfterAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/gemini-hook.cmd",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "AfterTool": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/<you>/.ai-gate/sync_test_hook.py --format gemini",
+            "timeout": 150000,
+            "name": "ai-gate-sync-test",
+            "description": "게이트 훅 동기화 테스트"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/gemini-hook.cmd",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "BeforeTool": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/gemini-hook.cmd",
+            "timeout": 10000
+          }
+        ]
+      }
+    ]
+  }
+}

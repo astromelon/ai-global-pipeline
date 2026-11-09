@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/<you>/.codex/hooks/node4-approval-gate-codex.py",
+            "timeout": 10,
+            "statusMessage": "Node 4 게이트 기록"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/<you>/.ai-gate/sync_test_hook.py --format codex",
+            "timeout": 150,
+            "statusMessage": "게이트 훅 동기화 확인"
+          }
+        ]
+      }
+    ]
+  }
+}

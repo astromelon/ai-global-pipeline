@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "deny": [
+      "command(regex:^(.*[;&|]\\s*)?git(\\.exe)?\\s+(-\\S+(\\s+[^-\\s]\\S*)?\\s+)*(push|merge|rebase|clean)(\\s.*)?$)",
+      "command(regex:^(.*[;&|]\\s*)?git(\\.exe)?\\s+(-\\S+(\\s+[^-\\s]\\S*)?\\s+)*reset\\s.*--hard(\\s.*)?$)",
+      "command(regex:^(.*[;&|]\\s*)?git(\\.exe)?\\s+(-\\S+(\\s+[^-\\s]\\S*)?\\s+)*branch\\s(.*\\s)?-D(\\s.*)?$)",
+      "command(regex:^(.*[;&|]\\s*)?git(\\.exe)?\\s+(-\\S+(\\s+[^-\\s]\\S*)?\\s+)*checkout(\\s.*)?\\s(--|\\.|-f|--force)(\\s.*)?$)",
+      "command(regex:^(.*[;&|]\\s*)?git(\\.exe)?\\s+(-\\S+(\\s+[^-\\s]\\S*)?\\s+)*stash\\s+(drop|clear)(\\s.*)?$)",
+      "command(regex:^(.*[;&|]\\s*)?git(\\.exe)?\\s+(-\\S+(\\s+[^-\\s]\\S*)?\\s+)*switch(\\s.*)?\\s(--discard-changes|-f|--force)(\\s.*)?$)",
+      "command(regex:^(.*[;&|]\\s*)?glab\\s+mr(\\s.*)?$)",
+      "command(regex:^(.*[;&|]\\s*)?glab\\s+api\\s.*(-X|--method)\\s*=?\\s*(PUT|POST|PATCH|DELETE)(\\s.*)?$)",
+      "command(regex:^(.*[;&|]\\s*)?gh\\s+pr\\s+merge(\\s.*)?$)",
+      "command(regex:(?i)^(.*[;&|]\\s*)?(\\S*[/\\\\])?(remove-item|ri|rm|del|erase|rmdir|rd)(\\s.*)?$)",
+      "command(regex:(?i)^.*\\[(System\\.)?IO\\.(File|Directory)\\]::Delete.*$)",
+      "command(regex:(?i)^(.*[;&|]\\s*)?Start-Process(\\s+-FilePath)?\\s+[\\\"']?git(\\.exe)?[\\\"']?(\\s.*)?$)"
+    ]
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "orca-status": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "C:/Users/<you>/.orca/agent-hooks/antigravity-pre-invocation.cmd",
+        "timeout": 10
+      }
+    ],
+    "PostInvocation": [
+      {
+        "type": "command",
+        "command": "C:/Users/<you>/.orca/agent-hooks/antigravity-post-invocation.cmd",
+        "timeout": 10
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "C:/Users/<you>/.orca/agent-hooks/antigravity-stop.cmd",
+        "timeout": 10
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/antigravity-pre-tool-use.cmd",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/<you>/.orca/agent-hooks/antigravity-post-tool-use.cmd",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "node4-approval-gate": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/<you>/.gemini/config/hooks/node4-approval-gate-agy.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "ai-gate-sync-test": {
+    "PostInvocation": [
+      {
+        "type": "command",
+        "command": "python C:/Users/<you>/.ai-gate/sync_test_hook.py --format agy",
+        "timeout": 150
+      }
+    ]
+  }
+}

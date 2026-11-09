@@ -1,0 +1,25 @@
+# ==== 범용 로컬 git 작업 ====
+prefix_rule(pattern=["git", "add"], decision="allow")
+prefix_rule(pattern=["git", "commit"], decision="allow")
+prefix_rule(pattern=["git", "checkout"], decision="allow")
+prefix_rule(pattern=["git", "stash"], decision="allow")
+
+# ==== Global Maintenance Pipeline (마스터: ~/.ai-global-pipeline.md) ====
+# Node 4 승인 게이트: 원격 반영·이력 변경·삭제는 항상 확인 (가장 엄격한 결정이 이긴다)
+prefix_rule(pattern=["git", ["push", "merge", "rebase", "clean"]], decision="prompt", justification="Node 4 승인 게이트: 사용자 Y 승인 후에만 실행")
+prefix_rule(pattern=["git", "reset", "--hard"], decision="prompt", justification="Node 4 승인 게이트: 이력 변경")
+prefix_rule(pattern=["git", "branch", "-D"], decision="prompt", justification="Node 4 승인 게이트: 브랜치 강제 삭제")
+prefix_rule(pattern=["glab", "mr"], decision="prompt", justification="Node 4 승인 게이트: MR 생성/머지")
+prefix_rule(pattern=[["rm", "Remove-Item", "del", "rmdir"]], decision="prompt", justification="Node 4 승인 게이트: 파일 삭제")
+# Node 4 승인 게이트: 커밋 안 된 작업을 지우는 명령 (git checkout/stash allow보다 엄격한 prompt가 이긴다)
+prefix_rule(pattern=["git", "checkout", ["--", ".", "-f", "--force"]], decision="prompt", justification="Node 4 승인 게이트: 작업 트리 변경 폐기")
+prefix_rule(pattern=["git", "restore"], decision="prompt", justification="Node 4 승인 게이트: 작업 트리 복원(--staged 포함, prefix 규칙은 옵션 구분 불가)")
+prefix_rule(pattern=["git", "stash", ["drop", "clear"]], decision="prompt", justification="Node 4 승인 게이트: stash 삭제")
+# Node 3 검증 루프: 조회·브랜치 생성·빌드/테스트 자동 허용
+prefix_rule(pattern=["git", ["status", "diff", "log", "show", "rev-parse"]], decision="allow")
+prefix_rule(pattern=["git", ["checkout", "switch"], ["-b", "-c"]], decision="allow")
+prefix_rule(pattern=["npm", "run", ["build", "lint"]], decision="allow")
+prefix_rule(pattern=["npm", "test"], decision="allow")
+prefix_rule(pattern=[["mvn", "./mvnw", ".\\mvnw.cmd", "mvnw.cmd"], ["compile", "test"]], decision="allow")
+prefix_rule(pattern=[["./gradlew", ".\\gradlew.bat", "gradlew.bat"], ["check", "test"]], decision="allow")
+prefix_rule(pattern=["pytest"], decision="allow")

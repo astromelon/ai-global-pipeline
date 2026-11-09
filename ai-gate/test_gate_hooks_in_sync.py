@@ -403,7 +403,7 @@ CODEX_HOMES = {
     "global": os.environ.get("NODE4_CODEX_HOME", os.path.expanduser(r"~\.codex")),
     "orca": os.environ.get(
         "NODE4_ORCA_CODEX_HOME",
-        os.path.join(os.path.expanduser(r"~\AppData\Roaming\orca\codex-accounts"), os.environ.get("ORCA_CODEX_ACCOUNT_ID", "<orca-codex-account-id>"), "home")),
+        os.path.join(os.path.expanduser(r"~\AppData\Roaming\orca\codex-accounts"), os.environ.get("ORCA_CODEX_ACCOUNT_ID", "<orca-codex-account-id>"), r"home")),
 }
 ORCA_HOOK_MARK = "/.orca/agent-hooks/"  # Orca 가 자기 상태 표시용으로 넣는 훅(전역에는 없어도 됨)
 ORCA_RULES_PREFIX = "_orca-global-"     # Orca 가 ~/.codex/rules/<이름> 을 복사해 두는 파일 이름 접두어

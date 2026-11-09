@@ -13,6 +13,8 @@ bypass/yolo 모드에서도 push·merge·rebase·삭제 같은 명령이 승인 
 | `sync_test_hook.py` | 4개 CLI 공용 사후 훅. 감시 파일이 바뀌면 테스트를 돌리고, 실패나 자동 갱신을 에이전트에게 알린다 |
 | `sync_pipeline_rules.py` | 마스터 규칙을 각 도구의 전역 규칙 파일 뒷부분에 반영한다 |
 | `prompt-skills/<이름>/SKILL.md` | 프롬프트 스킬 마스터 5개(`vc-investigate` 조사만, `vc-bugfix` 원인+회귀 테스트, `vc-feature` 범위 정한 구현, `vc-review` 합치기 전 검토, `vc-perf` 측정 기반 성능). 사용자 호출 전용(`disable-model-invocation: true`). Claude는 `/vc-bugfix <설명>`, Codex는 `$vc-bugfix <설명>`(또는 `/skills`)로 부른다. 고칠 때는 이 마스터만 고친다 |
+| `export_public_repo.py` | 실제 설정을 공개 저장소(기본 `C:\dev\ai-global-pipeline`)로 내보낸다. 홈 경로·Orca 계정 ID는 자리표시자로, 사내 고유 값은 비공개 `export-private.json`의 치환표로 바꾸고, 결과에 그런 값이 남으면 쓰지 않고 실패한다. `--check` 차이만 보기, `--test` 저장소 사본으로 테스트까지. 커밋·push·삭제는 하지 않는다 |
+| `export-private.json` | 내보내기용 사내 고유 값 치환표와 금지어. 내보내지 않는다 |
 | `sync_prompt_skills.py` | 프롬프트 스킬 마스터를 `~/.claude/skills`(Orca Claude 프로필은 이 폴더 링크), `~/.codex/skills`, Orca Codex 홈 `skills`에 복사한다. `--check`는 검사만 |
 | `gate_report.py` | Claude·agy·Codex 게이트 로그를 합쳐 최근 차단 내역을 보여 준다 |
 | `scan_allow_overlap.py` | Claude settings(전역·Orca 프로필·`C:\workspace`·`C:\dev` 저장소)의 `allow` 규칙 중 게이트 대상 명령(push·merge·삭제·`checkout --` 등)까지 허용하는 것을 찾는다. `--fix`는 지우고 원본을 `allow-backups/`에 백업한다. "항상 허용"으로 쌓이기 쉬우니 가끔 돌린다 |
@@ -41,6 +43,10 @@ python $HOME/.ai-gate/sync_pipeline_rules.py          # 다른 사본만 갱신
 # 프롬프트 스킬 사본 검사 / 갱신
 python $HOME/.ai-gate/sync_prompt_skills.py --check
 python $HOME/.ai-gate/sync_prompt_skills.py
+
+# 공개 저장소로 내보내기 (차이 확인 → 반영 + 저장소 사본 테스트). 커밋·push 는 따로
+python $HOME/.ai-gate/export_public_repo.py --check
+python $HOME/.ai-gate/export_public_repo.py --test
 ```
 
 ## 게이트 장치 위치

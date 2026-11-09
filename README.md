@@ -46,3 +46,7 @@ python ai-gate/test_gate_hooks_in_sync.py -v   # 설치 후, 실제 위치의 ~/
 - `python -c`, `node -e`, 변수, git alias로 감싼 명령은 게이트가 문자열로 감지하지 못한다(규칙 문서로만 금지).
 - Codex는 `git -C <경로> merge`처럼 옵션이 앞에 붙은 명령을 prefix 규칙으로 막지 못한다.
 - agy는 `--dangerously-skip-permissions`에서 settings의 `ask`를 무시한다(`deny`는 지킨다).
+
+## 라이선스
+
+[MIT](LICENSE)

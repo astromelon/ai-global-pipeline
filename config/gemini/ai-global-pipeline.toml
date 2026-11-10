@@ -62,6 +62,50 @@ commandRegex = "(?i)\\bStart-Process\\b[^;&|\\n]*\\sgit(?:\\.exe)?\\b"
 decision = "ask_user"
 priority = 900
 
+# ---- Node 4 승인 게이트: 훅 GATED 의 우회 보강 항목 (2026-11-11). branch -Df/--delete --force, checkout <ref> <파일>,
+# del/q·rd/s, xargs rm, {rm. 따옴표로 쪼갠 명령(git "push")·bash -lc 는 정책으로 구분할 수 없어 훅에서만 막는다 ----
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "\\bgit\\b[^;&|\\n]*\\sbranch(?![-\\w])[^;&|\\n]*\\s-[a-zA-Z]*(?:D|d[a-zA-Z]*f|f[a-zA-Z]*d)[a-zA-Z]*(?:\\s|$)"
+decision = "ask_user"
+priority = 900
+
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "\\bgit\\b[^;&|\\n]*\\sbranch(?![-\\w])[^;&|\\n]*\\s--delete\\b[^;&|\\n]*\\s(?:--force|-f)(?:\\s|$)"
+decision = "ask_user"
+priority = 900
+
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "\\bgit\\b[^;&|\\n]*\\sbranch(?![-\\w])[^;&|\\n]*\\s--force\\b[^;&|\\n]*\\s--delete(?:\\s|$)"
+decision = "ask_user"
+priority = 900
+
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "\\bgit\\b[^;&|\\n]*\\scheckout\\s+[^-\\s;&|<>0-9][^\\s;&|]*\\s+[^-\\s;&|<>0-9][^\\s;&|]*"
+decision = "ask_user"
+priority = 900
+
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "(?i)(?:^|[\\s;&|{(])(?:del|rmdir|rd|erase|ri)/[sqfpa?]"
+decision = "ask_user"
+priority = 900
+
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "\\bxargs\\b[^;&|\\n]*\\srm(?:\\s|$)"
+decision = "ask_user"
+priority = 900
+
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "[{(`]\\s*rm(?:\\s|$)"
+decision = "ask_user"
+priority = 900
+
 # ---- Node 3 검증 루프: 조회·브랜치 생성·빌드/테스트 ----
 [[rule]]
 toolName = "run_shell_command"

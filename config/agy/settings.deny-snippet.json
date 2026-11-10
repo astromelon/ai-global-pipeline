@@ -12,7 +12,12 @@
       "command(regex:^(.*[;&|]\\s*)?gh\\s+pr\\s+merge(\\s.*)?$)",
       "command(regex:(?i)^(.*[;&|]\\s*)?(\\S*[/\\\\])?(remove-item|ri|rm|del|erase|rmdir|rd)(\\s.*)?$)",
       "command(regex:(?i)^.*\\[(System\\.)?IO\\.(File|Directory)\\]::Delete.*$)",
-      "command(regex:(?i)^(.*[;&|]\\s*)?Start-Process(\\s+-FilePath)?\\s+[\\\"']?git(\\.exe)?[\\\"']?(\\s.*)?$)"
+      "command(regex:(?i)^(.*[;&|]\\s*)?Start-Process(\\s+-FilePath)?\\s+[\\\"']?git(\\.exe)?[\\\"']?(\\s.*)?$)",
+      "command(regex:^(.*[;&|]\\s*)?git(\\.exe)?\\s+(-\\S+(\\s+[^-\\s]\\S*)?\\s+)*branch(\\s.*)?\\s-[a-zA-Z]*(D|d[a-zA-Z]*f|f[a-zA-Z]*d)[a-zA-Z]*(\\s.*)?$)",
+      "command(regex:^(.*[;&|]\\s*)?git(\\.exe)?\\s+(-\\S+(\\s+[^-\\s]\\S*)?\\s+)*branch(\\s.*)?\\s(--delete(\\s.*)?\\s(--force|-f)|(--force|-f)(\\s.*)?\\s--delete)(\\s.*)?$)",
+      "command(regex:^(.*[;&|]\\s*)?git(\\.exe)?\\s+(-\\S+(\\s+[^-\\s]\\S*)?\\s+)*checkout\\s+[^-\\s;&|<>0-9][^\\s;&|]*\\s+[^-\\s;&|<>0-9][^\\s;&|]*(\\s.*)?$)",
+      "command(regex:(?i)^(.*[;&|{]\\s*|.*\\bxargs\\s+(-\\S+\\s+)*)(\\S*[/\\\\])?(remove-item|ri|rm|del|erase|rmdir|rd)(\\s.*)?$)",
+      "command(regex:(?i)^(.*[;&|{]\\s*)?(del|erase|rd|rmdir|ri)/[sqfpa?]\\S*(\\s.*)?$)"
     ]
   }
 }

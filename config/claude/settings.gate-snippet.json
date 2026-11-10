@@ -47,7 +47,27 @@
       "Bash(gh pr merge *)",
       "PowerShell(gh pr merge *)",
       "Bash(del *)",
-      "Bash(rmdir *)"
+      "Bash(rmdir *)",
+      "Bash(git branch -Df *)",
+      "Bash(git branch -fD *)",
+      "Bash(git branch -df *)",
+      "Bash(git branch -fd *)",
+      "Bash(git branch --delete --force *)",
+      "Bash(git branch --force --delete *)",
+      "Bash(git checkout HEAD *)",
+      "PowerShell(git branch -Df *)",
+      "PowerShell(git branch -fD *)",
+      "PowerShell(git branch -df *)",
+      "PowerShell(git branch -fd *)",
+      "PowerShell(git branch --delete --force *)",
+      "PowerShell(git branch --force --delete *)",
+      "PowerShell(git checkout HEAD *)",
+      "Bash(xargs rm *)",
+      "PowerShell(rd *)",
+      "PowerShell(erase *)",
+      "PowerShell(ri *)",
+      "PowerShell(del/q *)",
+      "PowerShell(rd/s *)"
     ]
   },
   "hooks": {

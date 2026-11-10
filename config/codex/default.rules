@@ -19,6 +19,13 @@ prefix_rule(pattern=["git", "switch", ["--discard-changes", "-f", "--force"]], d
 prefix_rule(pattern=["glab", "api", ["-X", "--method"], ["PUT", "POST", "PATCH", "DELETE"]], decision="prompt", justification="Node 4 승인 게이트: glab api 쓰기(-X/--method 가 다른 인자 뒤에 오면 prefix 규칙으로 못 막음)")
 prefix_rule(pattern=["gh", "pr", "merge"], decision="prompt", justification="Node 4 승인 게이트: PR 머지")
 prefix_rule(pattern=[["erase", "rd", "ri"]], decision="prompt", justification="Node 4 승인 게이트: 파일 삭제 별칭")
+# 훅 GATED 우회 보강(2026-11-11): prefix 규칙은 옵션이 앞에 붙거나 명령이 복합이면 못 막는다. 따옴표 우회·bash -lc 는 훅 전용
+prefix_rule(pattern=["git", "branch", ["-Df", "-fD", "-df", "-fd"]], decision="prompt", justification="Node 4 승인 게이트: 브랜치 강제 삭제")
+prefix_rule(pattern=["git", "branch", "--delete", ["--force", "-f"]], decision="prompt", justification="Node 4 승인 게이트: 브랜치 강제 삭제")
+prefix_rule(pattern=["git", "branch", "--force", "--delete"], decision="prompt", justification="Node 4 승인 게이트: 브랜치 강제 삭제")
+prefix_rule(pattern=["git", "checkout", "HEAD"], decision="prompt", justification="Node 4 승인 게이트: git checkout HEAD <파일> 은 작업 트리 변경 폐기(allow 규칙보다 prompt 가 이김)")
+prefix_rule(pattern=["xargs", "rm"], decision="prompt", justification="Node 4 승인 게이트: 파이프로 넘긴 파일 삭제")
+prefix_rule(pattern=[["del/q", "del/s", "del/f", "rd/s", "rd/q"]], decision="prompt", justification="Node 4 승인 게이트: cmd 스위치 붙은 삭제")
 # Node 3 검증 루프: 조회·브랜치 생성·빌드/테스트 자동 허용
 prefix_rule(pattern=["git", ["status", "diff", "log", "show", "rev-parse"]], decision="allow")
 prefix_rule(pattern=["git", ["checkout", "switch"], ["-b", "-c"]], decision="allow")

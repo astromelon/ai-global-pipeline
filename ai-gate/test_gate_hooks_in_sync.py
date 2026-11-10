@@ -283,11 +283,32 @@ class GeminiPolicySafetyTest(unittest.TestCase):
                     with self.subTest(file=name, rule=index, key=key):
                         re.compile(rule[key])
 
+    def test_policy_covers_bypass_patterns(self):
+        # Given 훅이 막는 우회 패턴(2026-11-11) / When 정책 규칙(ask_user)을 적용 / Then 걸리고, 정상 명령은 걸리지 않는다
+        import re
+        rules = [r for _, _, r in self.load_rules() if r.get("decision") == "ask_user"]
+
+        def asks(command):
+            return any(any(command.startswith(p) for p in r.get("commandPrefix", []))
+                       or ("commandRegex" in r and re.search(r["commandRegex"], command)) for r in rules)
+        for command in GEMINI_NEW_GATED:
+            with self.subTest(command=command):
+                self.assertTrue(asks(command))
+        for command in GEMINI_NEW_PASSED:
+            with self.subTest(command=command):
+                self.assertFalse(asks(command))
+
     def test_regex_and_prefix_not_combined(self):
         # 문서: commandPrefix 와 commandRegex 는 한 규칙에 함께 쓸 수 없다
         for name, index, rule in self.load_rules():
             with self.subTest(file=name, rule=index):
                 self.assertFalse("commandPrefix" in rule and "commandRegex" in rule)
+
+
+GEMINI_NEW_GATED = ["git branch -Df x", "git branch --delete --force x", "git branch --force --delete x",
+                    "git checkout HEAD src/a.java", "find . | xargs rm", "if ($x) {rm a.txt}", "del/q a.txt", "rd/s/q build"]
+GEMINI_NEW_PASSED = ["git checkout main && git pull --ff-only origin main", "git checkout -b fix/a origin/main",
+                     "git branch -d fix/draft", "git checkout main 2>&1", "cd ri/x", "docker rm c1"]
 
 
 class HookOutputEncodingTest(unittest.TestCase):
@@ -564,7 +585,13 @@ AGY_DENY_SAMPLES = [
     ("Remove-Item foo -Recurse", True), ("Get-ChildItem x | Remove-Item", True), ("del a.txt", True),
     ("rmdir build", True), ("ri build", True), ("[IO.File]::Delete('a')", True),
     ("Start-Process git -ArgumentList 'push'", True),
+    # 2026-11-11 우회 보강
+    ("git branch -Df x", True), ("git branch --delete --force x", True), ("git checkout HEAD src/a.java", True),
+    ("find . | xargs rm", True), ("if ($x) {rm a.txt}", True), ("del/q a.txt", True), ("rd/s/q build", True),
     # 거부하면 안 되는 것
+    ("git branch -d fix/draft", False), ("git checkout main && git pull --ff-only", False),
+    ("git checkout main 2>&1", False), ("git checkout -b fix/a origin/main", False), ("cd ri/x", False),
+    ("docker rm c1", False),
     ("git status", False), ("git merge-base a b", False), ("git push-certs", False),
     ("git checkout main", False), ("git checkout -b feat/a", False), ("git switch main", False),
     ("git stash pop", False), ("git restore --staged a.java", False), ("glab mr list", True),

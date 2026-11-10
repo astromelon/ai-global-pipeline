@@ -9,7 +9,7 @@ bypass/yolo 모드에서도 push·merge·rebase·삭제 같은 명령이 승인 
 
 | 파일 | 역할 |
 |---|---|
-| `test_gate_hooks_in_sync.py` | 동기화 테스트(31개). 게이트 훅·설정·규칙·스킬 사본이 서로 맞는지 검사한다 |
+| `test_gate_hooks_in_sync.py` | 동기화 테스트(32개). 게이트 훅·설정·규칙·스킬 사본이 서로 맞는지 검사한다 |
 | `sync_test_hook.py` | 4개 CLI 공용 사후 훅. 감시 파일이 바뀌면 테스트를 돌리고, 실패나 자동 갱신을 에이전트에게 알린다 |
 | `sync_pipeline_rules.py` | 마스터 규칙을 각 도구의 전역 규칙 파일 뒷부분에 반영한다 |
 | `prompt-skills/<이름>/SKILL.md` | 프롬프트 스킬 마스터 5개(`vc-investigate` 조사만, `vc-bugfix` 원인+회귀 테스트, `vc-feature` 범위 정한 구현, `vc-review` 합치기 전 검토, `vc-perf` 측정 기반 성능). 사용자 호출 전용(`disable-model-invocation: true`). Claude는 `/vc-bugfix <설명>`, Codex는 `$vc-bugfix <설명>`(또는 `/skills`)로 부른다. 고칠 때는 이 마스터만 고친다 |
@@ -56,9 +56,10 @@ python $HOME/.ai-gate/export_public_repo.py --test
 | Claude | `~/.claude/hooks/node4-approval-gate.py`(PreToolUse `ask`) + `permissions.ask`. 전역 `~/.claude/settings.json`과 Orca 프로필 `settings.json` 양쪽에 등록 | 확인창이 뜬다 |
 | Gemini | `~/.gemini/policies/ai-global-pipeline.toml`(`ask_user`, priority 900) | "denied by policy" |
 | Codex | `~/.codex/rules/default.rules`(`prompt`) + 기록 전용 훅 `~/.codex/hooks/node4-approval-gate-codex.py` | 거부. 단 `git -C . merge`처럼 옵션이 앞에 붙으면 비켜 간다 |
-| agy | `~/.gemini/config/hooks/node4-approval-gate-agy.py`(PreToolUse `deny`) + `antigravity-cli/settings.json`의 deny 정규식 12개(두 번째 방어선. 훅이 빠지거나 실패해도 막는다) | 거부. settings의 `ask`는 skip-permissions에서 무시되지만 `deny`는 지켜진다 |
+| agy | `~/.gemini/config/hooks/node4-approval-gate-agy.py`(PreToolUse `deny`) + `antigravity-cli/settings.json`의 deny 정규식 17개(두 번째 방어선. 훅이 빠지거나 실패해도 막는다) | 거부. settings의 `ask`는 skip-permissions에서 무시되지만 `deny`는 지켜진다 |
 
 게이트 대상(2026-11-09 보강): 기존 목록에 `git.exe`, 경로를 붙인 `rm`, PowerShell 별칭 `ri`·`erase`, `[IO.File]`/`[IO.Directory]::Delete`, `Start-Process git`, `git switch --discard-changes`/`-f`, `glab api` 쓰기 요청(-X PUT/POST/PATCH/DELETE), `gh pr merge`를 더했다. `python -c`·`node -e`·변수·git alias를 거치는 우회는 문자열로 확실히 잡을 수 없어 규칙 문서의 "차단 우회 금지"에 맡긴다.
+우회 보강(2026-11-11): `bash -lc`, 따옴표로 쪼갠 명령(`git "push"`), 줄 끝·`{` 뒤 `rm`(`xargs rm`), `del/q`·`rd/s`, `branch -Df`·`--delete --force`, `checkout <ref> <파일>`을 훅에 더했고, 설정으로 표현할 수 있는 항목(`branch -Df`·`--delete --force`, `checkout`, `xargs rm`, `del/q`, `rd` 별칭)은 Claude `ask`·agy `deny`·Gemini 정책·Codex 규칙에도 반영했다. 따옴표 처리와 `bash -lc`는 규칙으로 구분할 수 없어 훅에서만 막는다.
 훅 자체가 오류를 내면 입력에 게이트 관련 단어가 있을 때만 막는다(Claude는 확인창, agy는 거부). agy 훅은 모든 도구 호출에 걸리므로, 오류 때 무조건 막으면 훅 버그 하나로 agy 전체가 멈출 수 있기 때문이다.
 
 게이트 로그는 각 훅 옆의 `*.log`(JSONL, 1MB 회전, 자격증명 가림)에 남는다. `gate_report.py`가 이를 합쳐 보여 준다.

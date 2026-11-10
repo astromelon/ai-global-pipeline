@@ -57,8 +57,9 @@ SUMMARY_MAX_CHARS = 1500
 
 
 GEMINI_POLICY_DIR = os.path.join(HOME, ".gemini", "policies")
-ORCA_CODEX_HOME = os.path.join(os.environ.get("APPDATA", os.path.join(HOME, "AppData", "Roaming")), "orca",
-                               "codex-accounts", os.environ.get("ORCA_CODEX_ACCOUNT_ID", "<orca-codex-account-id>"), "home")
+ORCA_CODEX_HOME = os.environ.get("NODE4_ORCA_CODEX_HOME") or os.path.join(
+    os.environ.get("APPDATA", os.path.join(HOME, "AppData", "Roaming")), "orca",
+    "codex-accounts", os.environ.get("ORCA_CODEX_ACCOUNT_ID", "<orca-codex-account-id>"), "home")
 PIPELINE_MASTER = os.environ.get("NODE4_PIPELINE_MASTER", os.path.join(HOME, ".ai-global-pipeline.md"))  # 검증용 덮어쓰기
 PIPELINE_SYNC = os.path.join(HERE, "sync_pipeline_rules.py")
 WATCHED += [
@@ -105,12 +106,20 @@ def mtime(path: str):
     return os.path.getmtime(path) if os.path.exists(path) else None
 
 
+def run_python(script: str, timeout: int):
+    """python -I <script> 실행. (프로세스 결과, 출력 요약). 시간 초과면 결과가 None이다."""
+    try:
+        r = subprocess.run([sys.executable, "-I", script], capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return None, f"[오류] {os.path.basename(script)} 가 {timeout}초 안에 끝나지 않았습니다(시간 초과)"
+    return r, (r.stdout + r.stderr).decode("utf-8", errors="replace").strip()
+
+
 def sync_pipeline_if_master_changed(previous) -> str:
     """마스터 수정 시각이 바뀌었으면 각 도구 규칙 파일 뒷부분을 갱신한다. 실행 결과 요약(없으면 '')."""
     if previous is None or previous.get(PIPELINE_MASTER) == mtime(PIPELINE_MASTER):
         return ""
-    result = subprocess.run([sys.executable, "-I", PIPELINE_SYNC], capture_output=True, timeout=60)
-    return (result.stdout + result.stderr).decode("utf-8", errors="replace").strip()
+    return run_python(PIPELINE_SYNC, 60)[1]
 
 
 def sync_skills_if_master_changed(previous) -> str:
@@ -120,11 +129,12 @@ def sync_skills_if_master_changed(previous) -> str:
     masters = skill_master_files()
     changed = any(previous.get(p) != mtime(p) for p in masters)
     names = [os.path.basename(os.path.dirname(p)) for p in masters]
-    missing = any(not os.path.exists(os.path.join(d, n, "SKILL.md")) for d in SKILL_COPY_DIRS for n in names)
+    # 폴더(또는 그 부모)가 실제로 있는 대상만 본다(Orca 없는 환경에서 항상 '없음'이 되는 것 방지)
+    missing = any(not os.path.exists(os.path.join(d, n, "SKILL.md"))
+                  for d in SKILL_COPY_DIRS if os.path.isdir(d) or os.path.isdir(os.path.dirname(d)) for n in names)
     if not (changed or missing):
         return ""
-    result = subprocess.run([sys.executable, "-I", SKILLS_SYNC], capture_output=True, timeout=60)
-    return (result.stdout + result.stderr).decode("utf-8", errors="replace").strip()
+    return run_python(SKILLS_SYNC, 60)[1]
 
 
 def current_mtimes() -> dict:
@@ -158,7 +168,8 @@ def write_json(path: str, data) -> None:
 
 class FileLock:
     """감지·테스트 구간을 한 프로세스만 돌게 한다. 오래된 잠금(비정상 종료)은 걷어 낸다."""
-    WAIT_SEC, STALE_SEC = 140, 180
+    # 잠금 안 최대 작업 시간 = 사본 갱신 60 + 60 + 테스트 120 = 240초. 그보다 길어야 실행 중인 잠금을 걷어 내지 않는다.
+    WAIT_SEC, STALE_SEC = 140, 300
 
     def __enter__(self):
         import time
@@ -194,12 +205,14 @@ def detect_and_test() -> dict:
     now = current_mtimes()
     if previous == now:
         return None
-    write_json(STATE, now)
-    if previous is None:
+    if previous is None:  # 첫 실행: 현재 수정 시각만 기록
+        write_json(STATE, now)
         return None
+    # 상태 파일은 테스트·이벤트 기록이 끝난 뒤에 쓴다. 테스트 중 훅이 강제 종료돼도
+    # 다음 호출이 같은 변경을 다시 검사하므로 실패가 사라지지 않는다.
     changed = [os.path.basename(p) for p in sorted(set(previous) | set(now)) if previous.get(p) != now.get(p)]
-    result = subprocess.run([sys.executable, "-I", TEST], capture_output=True, timeout=120)
-    passed = result.returncode == 0
+    result, test_output = run_python(TEST, 120)
+    passed = result is not None and result.returncode == 0
     run_log(changed, passed, "\n".join(s for s in (synced, skills_synced) if s))
     event = {"ts": now_iso(), "detector": output_format(), "changed": changed, "passed": passed}
     notices = []
@@ -212,12 +225,15 @@ def detect_and_test() -> dict:
                        "사본을 갱신했습니다. 동기화 테스트는 통과했습니다.\n" + skills_synced)
     if notices:
         event["notice"] = "\n\n".join(notices)
+        kinds = [k for k, on in (("파이프라인 규칙", pipeline_sync_changed(synced)),
+                                 ("프롬프트 스킬", pipeline_sync_changed(skills_synced))) if on]
+        event["notice_title"] = " · ".join(kinds) + " 사본을 마스터에 맞춰 자동 갱신했습니다."
     synced = "\n".join(s for s in (synced, skills_synced) if s)
     if not passed:
-        output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+        output = test_output
         event["reason"] = ("[게이트 훅 동기화 테스트 실패] 수정된 파일: " + ", ".join(changed) + "\n"
                            + (f"규칙·스킬 자동 갱신 결과:\n{synced}\n" if synced else "")
-                           + failure_summary(output)
+                           + (output if result is None else failure_summary(output))
                            + "\n실패한 항목(게이트 훅 GATED·REDACTIONS / Claude·Codex 설정 / 파이프라인 규칙·프롬프트 스킬 사본 / "
                            + "README 테스트 표·개수)을 맞춘 뒤 다시 실행하세요: python "
                            + TEST.replace("\\", "/") + " -v")
@@ -225,6 +241,7 @@ def detect_and_test() -> dict:
     event["id"] = log["last_id"] + 1
     log = {"last_id": event["id"], "events": (log["events"] + [event])[-EVENTS_KEEP:]}
     write_json(EVENTS, log)
+    write_json(STATE, now)  # 이벤트를 남긴 뒤에 상태를 확정한다
     return event
 
 
@@ -279,7 +296,8 @@ def message_for(pending: list):
     if not latest["passed"]:
         return render(output_format(), "\n\n".join(notices + [latest["reason"]]))
     if notices:
-        return render_notice(output_format(), "\n\n".join(notices))
+        titles = list(dict.fromkeys(e["notice_title"] for e in pending if e.get("notice_title")))
+        return render_notice(output_format(), "\n\n".join(notices), " ".join(titles))
     return None
 
 
@@ -334,13 +352,13 @@ def pipeline_sync_changed(synced: str) -> bool:
                for line in synced.splitlines() if line.strip())
 
 
-def render_notice(fmt: str, text: str) -> dict:
+def render_notice(fmt: str, text: str, title: str = "") -> dict:
     """막지 않는 알림. 에이전트 문맥에 넣고, 지원하는 도구는 사용자 화면에도 한 줄 띄운다."""
     if fmt == "agy":
         return {"injectSteps": [{"ephemeralMessage": text}], "terminationBehavior": ""}
     event = "AfterTool" if fmt == "gemini" else "PostToolUse"
     return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": text},
-            "systemMessage": "파이프라인 규칙 사본을 마스터에 맞춰 자동 갱신했습니다."}
+            "systemMessage": title or "사본을 마스터에 맞춰 자동 갱신했습니다."}
 
 
 def render(fmt: str, reason: str) -> dict:

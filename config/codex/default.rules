@@ -15,6 +15,10 @@ prefix_rule(pattern=[["rm", "Remove-Item", "del", "rmdir"]], decision="prompt", 
 prefix_rule(pattern=["git", "checkout", ["--", ".", "-f", "--force"]], decision="prompt", justification="Node 4 승인 게이트: 작업 트리 변경 폐기")
 prefix_rule(pattern=["git", "restore"], decision="prompt", justification="Node 4 승인 게이트: 작업 트리 복원(--staged 포함, prefix 규칙은 옵션 구분 불가)")
 prefix_rule(pattern=["git", "stash", ["drop", "clear"]], decision="prompt", justification="Node 4 승인 게이트: stash 삭제")
+prefix_rule(pattern=["git", "switch", ["--discard-changes", "-f", "--force"]], decision="prompt", justification="Node 4 승인 게이트: 작업 트리 변경 폐기(prefix 규칙은 옵션이 앞에 붙은 형태를 막지 못함)")
+prefix_rule(pattern=["glab", "api", ["-X", "--method"], ["PUT", "POST", "PATCH", "DELETE"]], decision="prompt", justification="Node 4 승인 게이트: glab api 쓰기(-X/--method 가 다른 인자 뒤에 오면 prefix 규칙으로 못 막음)")
+prefix_rule(pattern=["gh", "pr", "merge"], decision="prompt", justification="Node 4 승인 게이트: PR 머지")
+prefix_rule(pattern=[["erase", "rd", "ri"]], decision="prompt", justification="Node 4 승인 게이트: 파일 삭제 별칭")
 # Node 3 검증 루프: 조회·브랜치 생성·빌드/테스트 자동 허용
 prefix_rule(pattern=["git", ["status", "diff", "log", "show", "rev-parse"]], decision="allow")
 prefix_rule(pattern=["git", ["checkout", "switch"], ["-b", "-c"]], decision="allow")

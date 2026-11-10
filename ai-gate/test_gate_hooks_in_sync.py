@@ -108,6 +108,32 @@ SAMPLE_COMMANDS = [
     ("Start-Process notepad", []),
     ("git config --get remote.origin.url", []),
     ("echo prime", []),  # 'ri' 가 단어 중간에 있는 경우
+    # 2026-11-10 우회 보강: 결합 셸 옵션(-lc), 따옴표로 쪼갠 단어, 줄 끝 rm, 중괄호·백틱 뒤, cmd 슬래시 옵션, 긴 옵션·축약
+    ("bash -lc 'git push'", ["git push"]),
+    ('bash -ic "rm -rf build"', ["rm"]),
+    ('git "push" origin main', ["git push"]),
+    ("git 'reset' --hard", ["git reset --hard"]),
+    ('git pu""sh origin main', ["git push"]),
+    ('"rm" -rf build', ["rm"]),
+    ("find . -name x | xargs rm", ["rm"]),
+    ("if ($x) {rm a.txt}", ["rm"]),
+    ("&{ri a.txt}", ["del/rmdir"]),
+    ("del/q a.txt", ["del/rmdir"]),
+    ("rd/s/q build", ["del/rmdir"]),
+    ("git branch -Df x", ["git branch -D"]),
+    ("git branch --delete --force x", ["git branch -D"]),
+    ("git checkout HEAD src/a.java", ["git checkout --"]),
+    # 오탐 제거·대조: 막지 않아야 함
+    ("docker rm c1", []),
+    ("git rm --cached a", []),
+    ("echo rm x", []),
+    ('git commit -m "rm"', []),
+    ('echo "rm"', []),
+    ("git branch --delete fix/a", []),
+    ("git branch -a", []),
+    ("git checkout -b fix/a origin/main", []),
+    ("git checkout main 2>&1", []),
+    ("cd ri/x", []),
 ]
 
 SAMPLE_SECRETS = [
@@ -143,7 +169,7 @@ class GateHooksInSyncTest(unittest.TestCase):
 
     def test_quote_rules_identical(self):
         for name, module in self.others():
-            for attr in ("SHELL_PAYLOAD_PREFIX", "QUOTED_TOOL"):
+            for attr in ("SHELL_PAYLOAD_PREFIX", "QUOTED_TOOL", "SIMPLE_WORD", "COMMAND_POSITION", "GIT_SUBCOMMAND"):
                 with self.subTest(hook=name, attr=attr):
                     ref, other = getattr(self.reference, attr), getattr(module, attr)
                     self.assertEqual((ref.pattern, ref.flags), (other.pattern, other.flags))
@@ -316,6 +342,19 @@ class HookOutputEncodingTest(unittest.TestCase):
 
     def test_agy_output_is_ascii(self):
         payload = {"toolCall": {"name": "run_command", "args": {"CommandLine": "git push"}}}
+        self.assert_ascii_json(self.run_hook("agy", payload))
+
+    def test_agy_ignores_file_content_and_queries(self):
+        # Given 파일 쓰기 본문·검색어에 게이트 명령 문구가 든 호출 / When agy 훅 실행 / Then 판정하지 않고 통과
+        for args in ({"TargetFile": "README.md", "CodeContent": "배포: git push -u origin HEAD\n"},
+                     {"TargetFile": "clean.sh", "CodeContent": "rm -rf build\n"},
+                     {"Query": "git merge strategy"}):
+            with self.subTest(args=args):
+                self.assertEqual(self.run_hook("agy", {"toolCall": {"name": "tool", "args": args}}).strip(), b"")
+
+    def test_agy_checks_command_array(self):
+        # Given 명령이 인자 배열로 오는 호출 / When agy 훅 실행 / Then 게이트 대상이면 거부
+        payload = {"toolCall": {"name": "run_command", "args": {"command": ["git", "push"]}}}
         self.assert_ascii_json(self.run_hook("agy", payload))
 
 

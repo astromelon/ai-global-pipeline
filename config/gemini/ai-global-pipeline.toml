@@ -5,7 +5,7 @@
 # ---- Node 4 승인 게이트: 원격 반영·이력 변경·삭제 ----
 [[rule]]
 toolName = "run_shell_command"
-commandPrefix = ["git push", "git merge ", "git rebase", "git reset --hard", "git clean", "git branch -D", "glab mr", "rm ", "Remove-Item", "del ", "rmdir "]
+commandPrefix = ["git push", "git merge ", "git rebase", "git reset --hard", "git clean", "git branch -D", "glab mr", "rm ", "Remove-Item", "del ", "rmdir ", "erase ", "rd ", "ri ", "gh pr merge"]
 decision = "ask_user"
 priority = 900
 
@@ -34,6 +34,31 @@ priority = 900
 [[rule]]
 toolName = "run_shell_command"
 commandRegex = "\\bgit\\b[^;&|\\n]*\\sstash\\s+(?:drop|clear)\\b"
+decision = "ask_user"
+priority = 900
+
+# ---- Node 4 승인 게이트: 훅 GATED 와 맞춘 나머지 항목 (단순 정규식, 중첩 반복자 없음) ----
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "\\bgit\\b[^;&|\\n]*\\sswitch(?![-\\w])[^;&|\\n]*\\s(?:--discard-changes|-f|--force)(?:\\s|$)"
+decision = "ask_user"
+priority = 900
+
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "(?i)\\bglab\\s+api\\b[^;&|\\n]*(?:-X|--method)\\s*=?\\s*(?:PUT|POST|PATCH|DELETE)\\b"
+decision = "ask_user"
+priority = 900
+
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "(?i)\\[(?:System\\.)?IO\\.(?:File|Directory)\\]::Delete\\b"
+decision = "ask_user"
+priority = 900
+
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "(?i)\\bStart-Process\\b[^;&|\\n]*\\sgit(?:\\.exe)?\\b"
 decision = "ask_user"
 priority = 900
 

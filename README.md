@@ -35,7 +35,7 @@ Claude Code · Gemini CLI · Antigravity(agy) · Codex 4개 AI 코딩 CLI가 **�
 |---|---|
 | `C:/Users/<you>/` (JSON 설정) | 본인 홈 경로 |
 | `ORCA_CODEX_ACCOUNT_ID` 환경변수 (`<orca-codex-account-id>`) | Orca를 쓰는 경우 `%APPDATA%\orca\codex-accounts\<id>`의 id. Orca를 쓰지 않으면 아래 "Orca 없이 쓰기"를 따른다 |
-| `.orca/agent-hooks/*` 훅 항목 | Orca 상태 표시용. Orca를 쓰지 않으면 지운다 |
+| `.orca/agent-hooks/*` 훅 항목 | Orca 상태 표시용. 설정 스니펫에는 게이트·동기화 훅만 담으므로 대부분 없다. `config/agy/hooks.json`·`config/gemini/settings.hooks-snippet.json`에 남아 있으면 Orca를 쓰지 않을 때 지운다 |
 
 ## 처음 설치할 때
 

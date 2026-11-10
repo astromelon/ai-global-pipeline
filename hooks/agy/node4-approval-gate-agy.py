@@ -23,17 +23,20 @@ GATED = [
     (GIT + r"rebase(?![-\w])", "git rebase"),
     (GIT + r"reset\s+.*--hard\b", "git reset --hard"),
     (GIT + r"clean(?![-\w])", "git clean"),
-    (GIT + r"branch\s+.*-D\b", "git branch -D"),
-    (GIT + r"checkout(?![-\w])(?=[^;&|\n]*(?:\s--(?=\s|$)|\s\.(?=\s|$)|\s(?:-f|--force)\b))", "git checkout --"),
+    (GIT + r"branch(?![-\w])(?=[^;&|\n]*(?:\s-[a-zA-Z]*(?:D|d[a-zA-Z]*f|f[a-zA-Z]*d)[a-zA-Z]*(?=\s|$)"
+                              r"|\s--delete\b[^;&|\n]*(?:--force\b|\s-f\b)|\s--force\b[^;&|\n]*--delete\b))", "git branch -D"),
+    (GIT + r"checkout(?![-\w])(?:(?=[^;&|\n]*(?:\s--(?=\s|$)|\s\.(?=\s|$)|\s(?:-f|--force)\b))"
+                                r"|(?![^;&|\n]*\s(?:-[bBtd](?![\w-])|--(?:orphan|track|no-track|detach)\b))"
+                                r"(?=(?:\s+-\S+)*\s+(?![0-9]*[<>])[^-\s;&|]\S*\s+(?![0-9]*[<>])[^-\s;&|]\S*))", "git checkout --"),
     (GIT + r"restore(?![-\w])(?:(?![^;&|\n]*(?:--staged|\s-S\b))|(?=[^;&|\n]*(?:--worktree|\s-W\b)))", "git restore"),
     (GIT + r"stash\s+(?:drop|clear)\b", "git stash drop/clear"),
     (GIT + r"switch(?![-\w])(?=[^;&|\n]*(?:--discard-changes|\s(?:-f|--force)\b))", "git switch --discard-changes"),
     (r"\bglab\s+mr\b", "glab mr"),
     (r"(?i)\bglab\s+api\b(?=[^;&|\n]*(?:-X|--method)\s*=?\s*(?:PUT|POST|PATCH|DELETE)\b)", "glab api 쓰기"),
     (r"\bgh\s+pr\s+merge\b", "gh pr merge"),
-    (r"(?:^|[\s;&|(/\\])rm\s", "rm"),
+    (r"(?:^|[\s;&|({`/\\])(?<!docker )(?<!git )(?<!echo )rm(?=\s|$|[;&|)}`])", "rm"),
     (r"(?i)\bRemove-Item\b", "Remove-Item"),
-    (r"(?i)(?:^|[\s;&|(])(?:del|rmdir|rd|erase|ri)\s", "del/rmdir"),
+    (r"(?i)(?:^|[\s;&|({`])(?:del|rmdir|rd|erase|ri)(?:\s|/[sqfpa?](?=[\s/]|$)|[;&|)}`])", "del/rmdir"),
     (r"(?i)\[(?:System\.)?IO\.(?:File|Directory)\]::Delete\b", ".NET Delete"),
     (r"(?i)\bStart-Process\b(?:\s+-FilePath)?\s+git(?:\.exe)?\b", "Start-Process git"),
 ]
@@ -44,11 +47,16 @@ GATED = [
 # 닫히지 않은 따옴표는 지우지 않는다(판정 누락보다 오탐이 안전하다).
 SHELL_PAYLOAD_PREFIX = re.compile(
     r"(?i)(?:\bcmd(?:\.exe)?(?:\s+/\w+)*\s+/[ck]"
-    r"|\b(?:bash|sh|zsh|dash|pwsh|powershell|wsl)(?:\.exe)?\b(?:\s+\S+)*?\s+-{1,2}(?:c|command|commandwithargs|e|exec)"
+    r"|\b(?:bash|sh|zsh|dash|pwsh|powershell|wsl)(?:\.exe)?\b(?:\s+\S+)*?\s+-{1,2}(?:[a-z]*c|command|commandwithargs|e|exec)"
     r"|\b(?:iex|invoke-expression|eval)"
     r"|\bssh(?:\.exe)?(?:\s+\S+)+)\s*$"
 )
 QUOTED_TOOL = re.compile(r"(?i)(?:^|[\\/])(git|glab)(?:\.exe|\.cmd)?$")
+# 따옴표로 감싼 단순 단어는 명령 위치("rm" -rf)나 git 하위 명령 위치(git "push")에서, 또는 따옴표로 쪼갠 단어(git pu""sh)로
+# 쓰일 때만 원문을 남긴다. 그 밖의 위치(echo "rm", -m "fix")는 문자열이므로 비운다.
+SIMPLE_WORD = re.compile(r"[A-Za-z][\w.-]*")
+COMMAND_POSITION = re.compile(r"(?:^|[;&|{`]|(?<!@)\(|\b(?:sudo|xargs|exec|call|start))\s*&?\s*$")  # @( 는 배열이라 제외
+GIT_SUBCOMMAND = re.compile(r"(?i)(?<!Start-Process )(?<!-FilePath )\bgit(?:\.exe)?\s+" + OPT + r"$")  # Start-Process git 은 별도 항목
 
 
 def neutralize_quotes(command: str) -> str:
@@ -81,10 +89,16 @@ def neutralize_quotes(command: str) -> str:
             break
         content = "".join(buf)
         tool = QUOTED_TOOL.search(content.strip())
-        if SHELL_PAYLOAD_PREFIX.search("".join(out)):
+        prev = "".join(out)
+        adjacent = prev[-1:].isalnum() or command[j + 1:j + 2].isalnum()
+        if SHELL_PAYLOAD_PREFIX.search(prev):
             out.append(" " + neutralize_quotes(content) + " ")
         elif tool:
             out.append(" " + tool.group(1) + " ")
+        elif adjacent and (content == "" or SIMPLE_WORD.fullmatch(content)):
+            out.append(content)  # git pu""sh, r"m" 처럼 따옴표로 쪼갠 단어는 이어 붙인다
+        elif SIMPLE_WORD.fullmatch(content) and (COMMAND_POSITION.search(prev) or GIT_SUBCOMMAND.search(prev)):
+            out.append(" " + content + " ")  # "rm" -rf, git "push"
         else:
             out.append(' "" ')
         i = j + 1
@@ -122,6 +136,26 @@ def strings(node):
             yield from strings(value)
 
 
+# 명령 실행 도구의 명령 인자 이름. 파일 쓰기 본문(CodeContent 등)·검색어·경로 인자는 판정하지 않는다
+# (README에 적은 'git push' 문구나 스크립트 속 'rm -rf' 가 오탐으로 거부되던 문제).
+# 한계: 실제 agy 도구의 인자 이름은 확인하지 못했다. 이 목록에 없는 이름으로 명령을 받는 도구는 통과된다.
+# 새 이름을 발견하면 여기에 추가하고, 게이트 로그(gate_report.py)로 확인한다.
+COMMAND_KEYS = ("CommandLine", "commandLine", "command", "Command", "cmd", "Cmd", "script", "Script")
+
+
+def command_texts(args) -> list:
+    """도구 인자에서 명령 문자열만 모은다(문자열 또는 문자열 배열)."""
+    found = []
+    if isinstance(args, dict):
+        for key in COMMAND_KEYS:
+            value = args.get(key)
+            if isinstance(value, str):
+                found.append(value)
+            elif isinstance(value, list):
+                found.append(" ".join(str(part) for part in value))
+    return found
+
+
 def redact(command: str) -> str:
     """로그용으로 자격증명을 가리고 길이를 자른다."""
     for pattern, replacement in REDACTIONS:
@@ -146,11 +180,12 @@ def main(raw: str) -> None:
     data = json.loads(raw)  # 해석 실패는 아래 __main__ 의 오류 처리로 넘긴다
     tool_call = data.get("toolCall") or {}
     args = tool_call.get("args") or {}
-    hits = sorted({label for text in strings(args) for label in gate_hits(text)})
+    commands = command_texts(args)
+    hits = sorted({label for text in commands for label in gate_hits(text)})
     if not hits:
         return
     decision = "deny"
-    command = args.get("CommandLine") if isinstance(args.get("CommandLine"), str) else " ".join(strings(args))
+    command = " ; ".join(commands)
     write_log({
         "ts": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
         "conversation_id": data.get("conversationId"),

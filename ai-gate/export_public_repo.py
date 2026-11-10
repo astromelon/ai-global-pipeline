@@ -5,6 +5,7 @@
   python export_public_repo.py --check         # 쓰지 않고 저장소와 다른 파일만 보고. 다르면 종료 코드 1
   python export_public_repo.py --test          # 복사 후 저장소 사본으로 동기화 테스트도 실행
   python export_public_repo.py --repo D:/path  # 저장소 위치(기본 C:/dev/ai-global-pipeline)
+  python export_public_repo.py --no-private    # export-private.json 없이 진행(사내 값 치환·금지어 검사 생략, 경고 출력)
 
 하지 않는 것: 커밋·push·파일 삭제. 원본에서 사라져 저장소에만 남은 파일은 목록만 보여 준다(직접 git rm).
 
@@ -13,6 +14,7 @@
 - Orca Codex 계정 id 는 ORCA_CODEX_ACCOUNT_ID 환경변수, Orca Claude 프로필 id 는 <orca-claude-profile-id>
 - 그 밖의 사내 고유 값은 이 스크립트에 적지 않고 비공개 파일 export-private.json 에 둔다(이 파일은 내보내지 않는다):
     {"replacements": {"원래 문자열": "바꿀 문자열", ...}, "forbidden": ["결과에 남으면 안 되는 단어", ...]}
+export-private.json 이 없으면 기본은 종료 코드 2 로 실패한다(--no-private 로만 생략 가능).
 결과에 홈 사용자명·계정 id·forbidden 단어·토큰 형태 문자열이 남으면 저장소에 쓰지 않고 실패한다.
 """
 import argparse
@@ -32,8 +34,9 @@ APPDATA = Path(os.environ.get("APPDATA", HOME / "AppData" / "Roaming"))
 DEFAULT_REPO = Path(os.environ.get("AI_PIPELINE_PUBLIC_REPO", r"C:\dev\ai-global-pipeline"))
 PRIVATE = HERE / "export-private.json"
 ENV_ID = 'os.environ.get("ORCA_CODEX_ACCOUNT_ID", "<orca-codex-account-id>")'
-# 저장소에서 이 스크립트가 관리하지 않는 파일(손으로 쓰는 문서 등). --check 의 "저장소에만 있음"에서 뺀다.
-UNMANAGED = {".gitignore", "README.md", "LICENSE"}
+# --check/--내보내기가 "저장소에만 있음"을 찾는 폴더. 루트의 손으로 쓰는 문서(README.md 등)는 여기에 없으므로 대상이 아니다.
+MANAGED_DIRS = {"pipeline", "hooks", "config", "ai-gate"}
+GATE_HOOK_MARKS = ("node4-approval-gate", "sync_test_hook")  # 설정 스니펫에 남길 훅 명령 표식
 
 # 저장소 경로 → 원본
 FILES = {
@@ -56,8 +59,11 @@ TOKEN_PATTERNS = [r"gh[pousr]_[A-Za-z0-9]{20,}", r"glpat-[A-Za-z0-9_-]{20,}", r"
                   r"AKIA[0-9A-Z]{16}", r"xox[baprs]-[A-Za-z0-9-]{10,}", r"-----BEGIN [A-Z ]*PRIVATE KEY-----"]
 
 
-def load_private() -> dict:
+def load_private(allow_missing: bool = False) -> dict:
     if not PRIVATE.exists():
+        if not allow_missing:
+            raise FileNotFoundError(PRIVATE)
+        print(f"[경고] {PRIVATE.name} 이 없어 사내 값 치환·금지어 검사를 건너뜁니다(--no-private). 공개 전에 직접 확인하세요.")
         return {"replacements": {}, "forbidden": []}
     data = json.loads(PRIVATE.read_text(encoding="utf-8"))
     return {"replacements": data.get("replacements", {}), "forbidden": data.get("forbidden", [])}
@@ -102,8 +108,22 @@ def sanitize(rel: str, text: str, private: dict) -> str:
     return text
 
 
+def gate_hooks(hooks):
+    """훅 설정에서 게이트·동기화 훅 핸들러만 남긴다(Orca 상태 훅 등은 뺀다). 남는 핸들러가 없는 그룹·이벤트는 지운다."""
+    kept = {}
+    for event, groups in (hooks or {}).items():
+        new_groups = []
+        for group in groups:
+            handlers = [h for h in group.get("hooks", []) if any(m in h.get("command", "") for m in GATE_HOOK_MARKS)]
+            if handlers:
+                new_groups.append({**group, "hooks": handlers})
+        if new_groups:
+            kept[event] = new_groups
+    return kept or None
+
+
 def snippets() -> dict:
-    """설정 파일에서 게이트 관련 부분만 뽑는다(인증·개인 허용 목록 제외)."""
+    """설정 파일에서 게이트 관련 부분만 뽑는다(인증·개인 허용 목록·Orca 상태 훅 제외)."""
     def load(p):
         return json.loads((HOME / p).read_text(encoding="utf-8"))
     c = load(".claude/settings.json")
@@ -112,9 +132,9 @@ def snippets() -> dict:
     g = load(".gemini/settings.json")
     data = {
         "config/claude/settings.gate-snippet.json":
-            {"permissions": {k: perm[k] for k in ("ask", "deny") if perm.get(k)}, "hooks": c.get("hooks")},
+            {"permissions": {k: perm[k] for k in ("ask", "deny") if perm.get(k)}, "hooks": gate_hooks(c.get("hooks"))},
         "config/agy/settings.deny-snippet.json": {"permissions": {"deny": a.get("permissions", {}).get("deny")}},
-        "config/gemini/settings.hooks-snippet.json": {"hooks": g.get("hooks")},
+        "config/gemini/settings.hooks-snippet.json": {"hooks": gate_hooks(g.get("hooks"))},
     }
     return {rel: json.dumps(obj, ensure_ascii=False, indent=2) + "\n" for rel, obj in data.items()}
 
@@ -148,16 +168,28 @@ def normalize(text: str) -> str:
 def compare(repo: Path, files: dict) -> tuple:
     changed = [rel for rel, text in files.items()
                if not (repo / rel).exists() or normalize((repo / rel).read_text(encoding="utf-8")) != normalize(text)]
-    managed_dirs = {"pipeline", "hooks", "config", "ai-gate"}
     existing = {p.relative_to(repo).as_posix() for p in repo.rglob("*")
                 if p.is_file() and ".git" not in p.relative_to(repo).parts and "__pycache__" not in p.parts}
     stale = sorted(rel for rel in existing - set(files)
-                   if rel not in UNMANAGED and rel.split("/", 1)[0] in managed_dirs)
+                   if rel.split("/", 1)[0] in MANAGED_DIRS)
     return changed, stale
+
+
+def repo_test_env(repo: Path) -> dict:
+    """저장소 사본에 있는 훅·정책만 테스트 대상으로 지정한다(없는 파일은 설치된 위치를 그대로 읽는다)."""
+    mapping = {
+        "NODE4_CLAUDE_HOOK": "hooks/claude/node4-approval-gate.py",
+        "NODE4_AGY_HOOK": "hooks/agy/node4-approval-gate-agy.py",
+        "NODE4_CODEX_HOOK": "hooks/codex/node4-approval-gate-codex.py",
+        "NODE4_GEMINI_POLICY_DIR": "config/gemini",
+        "NODE4_AGY_HOOKS_JSON": "config/agy/hooks.json",
+    }
+    return {k: str(repo / rel) for k, rel in mapping.items() if (repo / rel).exists()}
 
 
 def run_tests(repo: Path) -> int:
     env = dict(os.environ)
+    env.update(repo_test_env(repo))
     codex_ids, _ = account_ids()
     if codex_ids and "ORCA_CODEX_ACCOUNT_ID" not in env:
         env["ORCA_CODEX_ACCOUNT_ID"] = codex_ids[0]
@@ -169,12 +201,18 @@ def main() -> int:
     ap.add_argument("--repo", type=Path, default=DEFAULT_REPO)
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--test", action="store_true")
+    ap.add_argument("--no-private", action="store_true", help="export-private.json 없이 진행(경고 출력)")
     args = ap.parse_args()
     if not (args.repo / ".git").exists():
         print(f"저장소가 아닙니다: {args.repo}")
         return 2
 
-    private = load_private()
+    try:
+        private = load_private(args.no_private)
+    except FileNotFoundError as e:
+        print(f"[중단] 비공개 치환표가 없습니다: {e}")
+        print("  만들거나, 사내 값 검사를 건너뛰려면 --no-private 를 주세요.")
+        return 2
     files = build(private)
     found = leaks(files, private)
     if found:
@@ -190,7 +228,7 @@ def main() -> int:
     if not changed:
         print("변경 없음")
     if args.check:
-        return 1 if changed else 0
+        return 1 if changed or stale else 0
 
     with tempfile.TemporaryDirectory() as tmp:  # 모두 만든 뒤 한꺼번에 옮긴다
         for rel in changed:

@@ -17,7 +17,18 @@
       "command(regex:^(.*[;&|]\\s*)?git(\\.exe)?\\s+(-\\S+(\\s+[^-\\s]\\S*)?\\s+)*branch(\\s.*)?\\s(--delete(\\s.*)?\\s(--force|-f)|(--force|-f)(\\s.*)?\\s--delete)(\\s.*)?$)",
       "command(regex:^(.*[;&|]\\s*)?git(\\.exe)?\\s+(-\\S+(\\s+[^-\\s]\\S*)?\\s+)*checkout\\s+[^-\\s;&|<>0-9][^\\s;&|]*\\s+[^-\\s;&|<>0-9][^\\s;&|]*(\\s.*)?$)",
       "command(regex:(?i)^(.*[;&|{]\\s*|.*\\bxargs\\s+(-\\S+\\s+)*)(\\S*[/\\\\])?(remove-item|ri|rm|del|erase|rmdir|rd)(\\s.*)?$)",
-      "command(regex:(?i)^(.*[;&|{]\\s*)?(del|erase|rd|rmdir|ri)/[sqfpa?]\\S*(\\s.*)?$)"
+      "command(regex:(?i)^(.*[;&|{]\\s*)?(del|erase|rd|rmdir|ri)/[sqfpa?]\\S*(\\s.*)?$)",
+      "command(regex:^(.*[;&|]\\s*)?git(\\.exe)?\\s+(-\\S+(\\s+[^-\\s]\\S*)?\\s+)*rm(\\s+([^-\\s;&|][^\\s;&|]*|-([^-\\s;&|][^\\s;&|]*)?|--([^\\s;&|c][^\\s;&|]*)?|--c([^\\s;&|a][^\\s;&|]*)?|--ca([^\\s;&|c][^\\s;&|]*)?|--cac([^\\s;&|h][^\\s;&|]*)?|--cach([^\\s;&|e][^\\s;&|]*)?|--cache([^\\s;&|d][^\\s;&|]*)?|--cached[^\\s;&|]+))*\\s*([;&|].*)?$)",
+      "command(regex:^(.*[;&|]\\s*)?git(\\.exe)?\\s+(-\\S+(\\s+[^-\\s]\\S*)?\\s+)*pull(\\s+([^-\\s;&|][^\\s;&|]*|-([^-\\s;&|][^\\s;&|]*)?|--([^\\s;&|f][^\\s;&|]*)?|--f([^\\s;&|f][^\\s;&|]*)?|--ff([^-\\s;&|][^\\s;&|]*)?|--ff-([^\\s;&|o][^\\s;&|]*)?|--ff-o([^\\s;&|n][^\\s;&|]*)?|--ff-on([^\\s;&|l][^\\s;&|]*)?|--ff-onl([^\\s;&|y][^\\s;&|]*)?|--ff-only[^\\s;&|]+))*\\s*([;&|].*)?$)",
+      "command(regex:^(.*[;&|]\\s*)?git(\\.exe)?\\s+(-\\S+(\\s+[^-\\s]\\S*)?\\s+)*pull(\\s[^;&|]*)?\\s(--reb[^\\s;&|]*|-[a-zA-Z]*r[a-zA-Z]*)([\\s;&|].*)?$)",
+      "command(regex:^(.*[;&|]\\s*)?git(\\.exe)?\\s+(-\\S+(\\s+[^-\\s]\\S*)?\\s+)*update-ref(\\s.*)?\\s(-[a-zA-Z]*d[a-zA-Z]*|--d\\S*)(\\s.*)?$)",
+      "command(regex:^(.*[;&|]\\s*)?git(\\.exe)?\\s+(-\\S+(\\s+[^-\\s]\\S*)?\\s+)*checkout-index(\\s.*)?\\s(-[a-zA-Z]*f[a-zA-Z]*|--f\\S*)(\\s.*)?$)",
+      "command(regex:^(.*[;&|]\\s*)?git(\\.exe)?\\s+(-\\S+(\\s+[^-\\s]\\S*)?\\s+)*worktree\\s+remove(\\s.*)?\\s(-[a-zA-Z]*f[a-zA-Z]*|--f\\S*)(\\s.*)?$)",
+      "command(regex:^(.*[;&|({]\\s*)?(\\S*[/\\\\])?find(\\.exe)?\\s(.*\\s)?(-delete|-exec(dir)?\\s+(\\S*[/\\\\])?(rm|unlink))(\\s.*)?$)",
+      "command(regex:(?i)^(.*[;&|({]\\s*|.*\\bxargs\\s+(-\\S+\\s+)*|.*\\bsudo\\s+(-\\S+(\\s+[^-\\s]\\S*)?\\s+)*|.*\\b(env|exec|command|nohup|time)\\s+)?(\\S*[/\\\\])?unlink(\\.exe)?(\\s.*)?$)",
+      "command(regex:^.*(\\)|\\$[\\w:]+)\\s*\\.Delete\\s*\\(.*$)",
+      "command(regex:(?s)^((.*[\\s;&|({`\\\"'])?(python[0-9.]*|py|node|deno|bun|ruby|perl|php)(\\.exe)?[\\s;&|)}`\\\"']|.*[/\\\\](python[0-9.]*|py|node|deno|bun|ruby|perl|php)(\\.exe)?[\\\"']?[ \\t]+[^\\s;&|)}]).*(\\bshutil\\.rmtree\\b|\\bos\\.(remove|unlink|rmdir|removedirs)\\b|\\bfs(\\.promises)?\\.(rm|rmSync|unlink|unlinkSync|rmdir|rmdirSync)\\b|\\.(rm|rmSync|unlinkSync|rmdirSync)\\s*\\(|\\bDeno\\.remove(Sync)?\\b|\\b(unlink|rmdir|rmtree|remove_tree|removedirs)(\\s*\\(|\\s+[$\\\"'@])|\\brimraf(\\.\\w+)?\\s*\\(|[\\\"']rimraf[\\\"']|\\bFileUtils\\.(rm\\w*|remove\\w*)|\\b(File|Dir)\\.(delete|unlink|rmdir)\\b).*$)",
+      "command(regex:(?s)^.*(\\bshutil\\.rmtree\\b|\\bos\\.(remove|unlink|rmdir|removedirs)\\b|\\bfs(\\.promises)?\\.(rm|rmSync|unlink|unlinkSync|rmdir|rmdirSync)\\b|\\.(rm|rmSync|unlinkSync|rmdirSync)\\s*\\(|\\bDeno\\.remove(Sync)?\\b|\\b(unlink|rmdir|rmtree|remove_tree|removedirs)(\\s*\\(|\\s+[$\\\"'@])|\\brimraf(\\.\\w+)?\\s*\\(|[\\\"']rimraf[\\\"']|\\bFileUtils\\.(rm\\w*|remove\\w*)|\\b(File|Dir)\\.(delete|unlink|rmdir)\\b).*([\\s;&|({`\\\"'](python[0-9.]*|py|node|deno|bun|ruby|perl|php)(\\.exe)?([\\s;&|)}`\\\"'].*)?$|[/\\\\](python[0-9.]*|py|node|deno|bun|ruby|perl|php)(\\.exe)?[\\\"']?[ \\t]+[^\\s;&|)}].*$))"
     ]
   }
 }

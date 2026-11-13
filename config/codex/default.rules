@@ -27,6 +27,15 @@ prefix_rule(pattern=["git", "branch", "--force", "--delete"], decision="prompt",
 prefix_rule(pattern=["git", "checkout", "HEAD"], decision="prompt", justification="Node 4 승인 게이트: git checkout HEAD <파일> 은 작업 트리 변경 폐기(allow 규칙보다 prompt 가 이김)")
 prefix_rule(pattern=["xargs", "rm"], decision="prompt", justification="Node 4 승인 게이트: 파이프로 넘긴 파일 삭제")
 prefix_rule(pattern=[["del/q", "del/s", "del/f", "rd/s", "rd/q"]], decision="prompt", justification="Node 4 승인 게이트: cmd 스위치 붙은 삭제")
+# 같은 효과의 명령 보강(2026-11-13): prefix 규칙으로 표현할 수 있는 것만 넣는다. 다음은 표현할 수 없어 훅(기록 전용)·규칙 문서에 맡긴다:
+# git pull(--ff-only 없음 — Node 5 의 git pull --ff-only 와 구분 불가), find … -delete(옵션이 끝에 옴), (Get-Item x).Delete(), 스크립트 속 삭제
+prefix_rule(pattern=["git", "rm"], decision="prompt", justification="Node 4 승인 게이트: git rm(--cached 포함, prefix 규칙은 옵션 구분 불가)")
+prefix_rule(pattern=["git", "pull", ["--rebase", "-r", "--rebase=true", "--rebase=merges", "--rebase=interactive"]], decision="prompt", justification="Node 4 승인 게이트: git pull --rebase(이력 변경)")
+prefix_rule(pattern=["git", "update-ref", ["-d", "--delete"]], decision="prompt", justification="Node 4 승인 게이트: ref 삭제")
+prefix_rule(pattern=["git", "checkout-index", ["-f", "--force", "-af", "-fa"]], decision="prompt", justification="Node 4 승인 게이트: 작업 트리 덮어쓰기")
+prefix_rule(pattern=["git", "checkout-index", ["-a", "-u", "-q"], ["-f", "--force"]], decision="prompt", justification="Node 4 승인 게이트: 작업 트리 덮어쓰기")
+prefix_rule(pattern=["git", "worktree", "remove", ["-f", "--force"]], decision="prompt", justification="Node 4 승인 게이트: 워크트리 강제 삭제")
+prefix_rule(pattern=["unlink"], decision="prompt", justification="Node 4 승인 게이트: 파일 삭제")
 # Node 3 검증 루프: 조회·브랜치 생성·빌드/테스트 자동 허용
 prefix_rule(pattern=["git", ["status", "diff", "log", "show", "rev-parse"]], decision="allow")
 prefix_rule(pattern=["git", ["checkout", "switch"], ["-b", "-c"]], decision="allow")

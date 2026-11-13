@@ -56,11 +56,12 @@ python $HOME/.ai-gate/export_public_repo.py --test
 | Claude | `~/.claude/hooks/node4-approval-gate.py`(PreToolUse `ask`) + `permissions.ask`. 전역 `~/.claude/settings.json`과 Orca 프로필 `settings.json` 양쪽에 등록 | 확인창이 뜬다 |
 | Gemini | `~/.gemini/policies/ai-global-pipeline.toml`(`ask_user`, priority 900) | "denied by policy" |
 | Codex | `~/.codex/rules/default.rules`(`prompt`) + 기록 전용 훅 `~/.codex/hooks/node4-approval-gate-codex.py` | 거부. 단 `git -C . merge`처럼 옵션이 앞에 붙으면 비켜 간다 |
-| agy | `~/.gemini/config/hooks/node4-approval-gate-agy.py`(PreToolUse `deny`) + `antigravity-cli/settings.json`의 deny 정규식 17개(두 번째 방어선. 훅이 빠지거나 실패해도 막는다) | 거부. settings의 `ask`는 skip-permissions에서 무시되지만 `deny`는 지켜진다 |
+| agy | `~/.gemini/config/hooks/node4-approval-gate-agy.py`(PreToolUse `deny`) + `antigravity-cli/settings.json`의 deny 정규식 28개(두 번째 방어선. 훅이 빠지거나 실패해도 막는다) | 거부. settings의 `ask`는 skip-permissions에서 무시되지만 `deny`는 지켜진다 |
 
 게이트 대상(2026-11-09 보강): 기존 목록에 `git.exe`, 경로를 붙인 `rm`, PowerShell 별칭 `ri`·`erase`, `[IO.File]`/`[IO.Directory]::Delete`, `Start-Process git`, `git switch --discard-changes`/`-f`, `glab api` 쓰기 요청(-X PUT/POST/PATCH/DELETE), `gh pr merge`를 더했다. `python -c`·`node -e`·변수·git alias를 거치는 우회는 문자열로 확실히 잡을 수 없어 규칙 문서의 "차단 우회 금지"에 맡긴다.
 우회 보강(2026-11-11): `bash -lc`, 따옴표로 쪼갠 명령(`git "push"`), 줄 끝·`{` 뒤 `rm`(`xargs rm`), `del/q`·`rd/s`, `branch -Df`·`--delete --force`, `checkout <ref> <파일>`을 훅에 더했고, 설정으로 표현할 수 있는 항목(`branch -Df`·`--delete --force`, `checkout`, `xargs rm`, `del/q`, `rd` 별칭)은 Claude `ask`·agy `deny`·Gemini 정책·Codex 규칙에도 반영했다. 따옴표 처리와 `bash -lc`는 규칙으로 구분할 수 없어 훅에서만 막는다.
 우회 보강(2026-11-13): 세 훅의 따옴표 처리를 셸별 토크나이저로 바꿨다. bash 규칙(`\` 이스케이프·줄 이음, heredoc)과 PowerShell 규칙(백틱 이스케이프, `""`·`''`, here-string)으로 나눠 판정하고, Claude 훅은 도구 이름(Bash/PowerShell)에 맞는 규칙만, agy·Codex 훅은 두 규칙의 합집합을 쓴다. 따옴표로 감싼 git/glab/gh 인자(`git reset "--hard"`), 실행 파일 이름 변형(`rm.exe`, `"/bin/rm"`, `env "rm"`, `gh.exe`, `git.cmd`), 셸 전달(`powershell "..."`, `| bash`, `bash <<<`, `"$(...)"`), git 옵션 약어·묶음(`--har`, `--for`, `--di`, `-qf`)을 잡는다. 판정 시간이 훅 timeout을 넘으면 판정 없이 통과하므로 정규식 반복자에 상한을 두고, 100,000자를 넘는 명령은 판정 없이 "명령 길이 초과"로 게이트에 건다. Codex `default.rules`의 `git checkout` 전체 allow를 지웠다. 세 훅의 판정 로직은 `# ==== 판정 공통 블록 시작`~`끝` 표시 사이에 두고 글자 그대로 같게 유지한다.
+같은 효과의 명령 보강(2026-11-13): `git rm`(`--cached`만 쓰면 제외), `git pull`(`--ff-only`가 없거나 `--rebase`·`-r`·`--rebase=…`가 있으면), `git update-ref -d`, `git checkout-index -f`, `git worktree remove --force`, `find … -delete`, 명령 위치의 `unlink`, PowerShell `.Delete()` 메서드, 스크립트 속 삭제를 더했다. 스크립트 속 삭제는 따옴표 밖에 인터프리터(`python`·`py`·`node`·`deno`·`bun`·`ruby`·`perl`·`php`)가 있고 원문(따옴표·heredoc 안 포함)에 삭제 API(`shutil.rmtree`·`os.remove`·`Path.unlink()`·`fs.rmSync`·`rimraf(`·`FileUtils.rm_rf`·`unlink(` 등)가 보이면 건다. 따옴표 안을 봐야 해서 `GATED`가 아니라 `gate_hits`에서 따로 판정한다(라벨 "스크립트 삭제"). 설정은 표현할 수 있는 만큼 넣었다: agy `deny`·Gemini 정책은 전부(`find -exec rm`·`-exec unlink`도), Claude `ask`는 `git rm *`·`git pull`(인자 없음)·`--rebase`·`-r`·`update-ref -d`·`checkout-index -f`·`worktree remove -f`·`find * -delete*`·`unlink`, Codex 규칙은 `git rm`·`git pull --rebase`/`-r`·`update-ref -d`·`checkout-index -f`·`worktree remove -f`·`unlink`. 판정 시간을 지키려고 훅의 git 패턴은 하위 명령 글자(`push`, `pull` 등)가 판정 문자열에 없으면 정규식을 건너뛴다.
 훅 자체가 오류를 내면 입력에 게이트 관련 단어가 있을 때만 막는다(Claude는 확인창, agy는 거부). agy 훅은 모든 도구 호출에 걸리므로, 오류 때 무조건 막으면 훅 버그 하나로 agy 전체가 멈출 수 있기 때문이다.
 
 게이트 로그는 각 훅 옆의 `*.log`(JSONL, 1MB 회전, 자격증명 가림)에 남는다. `gate_report.py`가 이를 합쳐 보여 준다.
@@ -69,7 +70,7 @@ python $HOME/.ai-gate/export_public_repo.py --test
 
 | 묶음 | 검사 내용 |
 |---|---|
-| `GateHooksInSyncTest` | 세 훅(Claude·agy·Codex)의 판정 공통 블록이 글자 그대로 같은지, `GATED`·따옴표 처리 정규식·`REDACTIONS`·한도 상수가 같은지. 표본 명령 176개를 같게 판정하는지(`merge-base` 오탐, 따옴표 속 문자열, heredoc 본문, `bash -lc`·`git "push"`·`git reset "--hard"`·`rm.exe`·`\| bash`·옵션 약어 같은 우회 변형 등), 셸을 지정한 판정(bash·pwsh)이 맞는지, 100KB 직전 입력도 2초 안에 판정하는지. 자격증명을 가리는지 |
+| `GateHooksInSyncTest` | 세 훅(Claude·agy·Codex)의 판정 공통 블록이 글자 그대로 같은지, `GATED`·따옴표 처리 정규식·`REDACTIONS`·한도 상수가 같은지. 표본 명령 254개를 같게 판정하는지(`merge-base` 오탐, 따옴표 속 문자열, heredoc 본문, `bash -lc`·`git "push"`·`git reset "--hard"`·`rm.exe`·`\| bash`·옵션 약어 같은 우회 변형, `git rm`·`git pull`·`find -delete`·스크립트 속 삭제 같은 같은 효과의 명령 등), 셸을 지정한 판정(bash·pwsh)이 맞는지, 100KB 직전 입력도 2초 안에 판정하는지. 자격증명을 가리는지 |
 | `GeminiPolicySafetyTest` | Gemini 정책 TOML 문법, 정규식 컴파일 여부, 중첩 반복자(Gemini가 ReDoS로 거부), 한 규칙에 `commandPrefix`와 `commandRegex`를 함께 썼는지 |
 | `HookOutputEncodingTest` | Claude·agy 훅 stdout이 ASCII JSON인지. cp949 한글 때문에 agy가 `invalid UTF-8`로 멈춘 장애의 재발 방지. Claude 훅이 `tool_name`(Bash→bash, PowerShell→pwsh)에 맞는 셸 규칙으로 판정하는지 |
 | `ClaudeSettingsInSyncTest` | Claude 전역 `settings.json`과 Orca의 모든 Claude 프로필(계정마다 1개) `settings.json`의 권한과 훅이 같은지(순서 무관). 게이트 훅과 동기화 훅이 등록돼 있는지 |
@@ -179,7 +180,8 @@ python $HOME/.ai-gate/export_public_repo.py --test
 - agy 터미널 샌드박스에서는 Java(surefire) 테스트가 멈춘다. Java 프로젝트의 Node 3 검증은 Claude나 Codex에서 한다.
 - Claude 설정이나 훅을 바꾸면 이미 열린 세션에는 적용되지 않는다. 새 세션부터 적용된다.
 - Codex bypass 모드에서는 규칙에 안 걸린 명령이 그대로 실행된다. `git checkout` 전체 allow를 지웠어도 `git checkout <ref> <파일>`처럼 prefix 규칙으로 표현할 수 없는 변형은 막지 못한다(Codex 훅은 기록만 한다).
-- 훅 판정은 문자열 휴리스틱이다. 변수·`python -c`·git alias 경유, `$( )` 안에 따옴표를 다시 넣은 명령, `$'...'`(ANSI-C 문자열)은 셸과 다르게 해석해 놓칠 수 있다. 반대로 주석(`#`)·닫히지 않은 따옴표는 원문을 남기고 `$cmd = "..."`처럼 셸 이름이 든 문장의 문자열은 풀어서 보므로 오탐이 날 수 있다.
+- 훅 판정은 문자열 휴리스틱이다. 변수·git alias 경유, `python -c`·`node -e` 안에서 삭제 API가 아닌 방법(`os.system('git push')`, `subprocess`)으로 부르는 명령, `$( )` 안에 따옴표를 다시 넣은 명령, `$'...'`(ANSI-C 문자열)은 셸과 다르게 해석해 놓칠 수 있다. 반대로 주석(`#`)·닫히지 않은 따옴표는 원문을 남기고 `$cmd = "..."`처럼 셸 이름이 든 문장의 문자열은 풀어서 보므로 오탐이 날 수 있다.
 - 판정 시간 상한 때문에 git 전역 옵션이 17개 이상이거나, 하위 명령 뒤 1,000자를 넘어서 위험 옵션이 오는 명령은 놓친다.
 - pwsh 에서 '=' 뒤 '#' 주석과 스마트 따옴표(‘’“”)는 따옴표·주석으로 인식하지 않아 그 안/뒤 명령을 놓칠 수 있다.
-- 게이트 목록에 없는 같은 효과의 명령은 막지 않는다: `git rm -rf .`, `git pull --rebase`, `git update-ref -d`, `git checkout-index -f -a`, `git worktree remove --force`, `find … -delete`, `unlink`, `(Get-Item x).Delete()`, `shutil.rmtree` 같은 스크립트 속 삭제.
+- 같은 효과의 명령 중 다음은 막지 못한다: 스크립트 파일 속 삭제(`python clean.py`), `npx rimraf`·`bunx rimraf` 같은 패키지 실행, `git update-ref <ref> <값>`(ref 덮어쓰기)과 `git update-ref --stdin`, `--ff-only`가 붙은 `git pull`(설정 `pull.rebase`가 있어도 빨리 감기만 하므로 통과시킨다). `--ff-only`가 없는 `git pull`은 `pull.rebase` 설정에 따라 rebase 되거나 merge 커밋을 만들 수 있어 모두 건다. 설정 쪽 한계: Claude `ask`·Codex 규칙은 `git rm --cached`에도 확인을 요구하고(옵션 구분 불가), Codex는 `git pull origin main`·`find -delete`·`.Delete()`·스크립트 속 삭제를 규칙으로 막지 못한다(훅은 기록만). agy `deny`·Gemini 정책의 스크립트 삭제 규칙은 따옴표 안의 인터프리터 이름도 보므로 `git commit -m "fix python shutil.rmtree bug"` 같은 커밋 메시지도 막는다.
+- 따옴표로 감싼 `find` 옵션(`'-delete'`), `git rm a -- --cached`, 주석 속 `--cached`처럼 일부러 꾸민 형태는 놓칠 수 있다.

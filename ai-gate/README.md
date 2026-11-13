@@ -182,3 +182,4 @@ python $HOME/.ai-gate/export_public_repo.py --test
 - 훅 판정은 문자열 휴리스틱이다. 변수·`python -c`·git alias 경유, `$( )` 안에 따옴표를 다시 넣은 명령, `$'...'`(ANSI-C 문자열)은 셸과 다르게 해석해 놓칠 수 있다. 반대로 주석(`#`)·닫히지 않은 따옴표는 원문을 남기고 `$cmd = "..."`처럼 셸 이름이 든 문장의 문자열은 풀어서 보므로 오탐이 날 수 있다.
 - 판정 시간 상한 때문에 git 전역 옵션이 17개 이상이거나, 하위 명령 뒤 1,000자를 넘어서 위험 옵션이 오는 명령은 놓친다.
 - pwsh 에서 '=' 뒤 '#' 주석과 스마트 따옴표(‘’“”)는 따옴표·주석으로 인식하지 않아 그 안/뒤 명령을 놓칠 수 있다.
+- 게이트 목록에 없는 같은 효과의 명령은 막지 않는다: `git rm -rf .`, `git pull --rebase`, `git update-ref -d`, `git checkout-index -f -a`, `git worktree remove --force`, `find … -delete`, `unlink`, `(Get-Item x).Delete()`, `shutil.rmtree` 같은 스크립트 속 삭제.

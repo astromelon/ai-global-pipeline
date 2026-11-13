@@ -9,7 +9,7 @@ bypass/yolo 모드에서도 push·merge·rebase·삭제 같은 명령이 승인 
 
 | 파일 | 역할 |
 |---|---|
-| `test_gate_hooks_in_sync.py` | 동기화 테스트(32개). 게이트 훅·설정·규칙·스킬 사본이 서로 맞는지 검사한다 |
+| `test_gate_hooks_in_sync.py` | 동기화 테스트(36개). 게이트 훅·설정·규칙·스킬 사본이 서로 맞는지 검사한다 |
 | `sync_test_hook.py` | 4개 CLI 공용 사후 훅. 감시 파일이 바뀌면 테스트를 돌리고, 실패나 자동 갱신을 에이전트에게 알린다 |
 | `sync_pipeline_rules.py` | 마스터 규칙을 각 도구의 전역 규칙 파일 뒷부분에 반영한다 |
 | `prompt-skills/<이름>/SKILL.md` | 프롬프트 스킬 마스터 5개(`vc-investigate` 조사만, `vc-bugfix` 원인+회귀 테스트, `vc-feature` 범위 정한 구현, `vc-review` 합치기 전 검토, `vc-perf` 측정 기반 성능). 사용자 호출 전용(`disable-model-invocation: true`). Claude는 `/vc-bugfix <설명>`, Codex는 `$vc-bugfix <설명>`(또는 `/skills`)로 부른다. 고칠 때는 이 마스터만 고친다 |
@@ -60,6 +60,7 @@ python $HOME/.ai-gate/export_public_repo.py --test
 
 게이트 대상(2026-11-09 보강): 기존 목록에 `git.exe`, 경로를 붙인 `rm`, PowerShell 별칭 `ri`·`erase`, `[IO.File]`/`[IO.Directory]::Delete`, `Start-Process git`, `git switch --discard-changes`/`-f`, `glab api` 쓰기 요청(-X PUT/POST/PATCH/DELETE), `gh pr merge`를 더했다. `python -c`·`node -e`·변수·git alias를 거치는 우회는 문자열로 확실히 잡을 수 없어 규칙 문서의 "차단 우회 금지"에 맡긴다.
 우회 보강(2026-11-11): `bash -lc`, 따옴표로 쪼갠 명령(`git "push"`), 줄 끝·`{` 뒤 `rm`(`xargs rm`), `del/q`·`rd/s`, `branch -Df`·`--delete --force`, `checkout <ref> <파일>`을 훅에 더했고, 설정으로 표현할 수 있는 항목(`branch -Df`·`--delete --force`, `checkout`, `xargs rm`, `del/q`, `rd` 별칭)은 Claude `ask`·agy `deny`·Gemini 정책·Codex 규칙에도 반영했다. 따옴표 처리와 `bash -lc`는 규칙으로 구분할 수 없어 훅에서만 막는다.
+우회 보강(2026-11-13): 세 훅의 따옴표 처리를 셸별 토크나이저로 바꿨다. bash 규칙(`\` 이스케이프·줄 이음, heredoc)과 PowerShell 규칙(백틱 이스케이프, `""`·`''`, here-string)으로 나눠 판정하고, Claude 훅은 도구 이름(Bash/PowerShell)에 맞는 규칙만, agy·Codex 훅은 두 규칙의 합집합을 쓴다. 따옴표로 감싼 git/glab/gh 인자(`git reset "--hard"`), 실행 파일 이름 변형(`rm.exe`, `"/bin/rm"`, `env "rm"`, `gh.exe`, `git.cmd`), 셸 전달(`powershell "..."`, `| bash`, `bash <<<`, `"$(...)"`), git 옵션 약어·묶음(`--har`, `--for`, `--di`, `-qf`)을 잡는다. 판정 시간이 훅 timeout을 넘으면 판정 없이 통과하므로 정규식 반복자에 상한을 두고, 100,000자를 넘는 명령은 판정 없이 "명령 길이 초과"로 게이트에 건다. Codex `default.rules`의 `git checkout` 전체 allow를 지웠다. 세 훅의 판정 로직은 `# ==== 판정 공통 블록 시작`~`끝` 표시 사이에 두고 글자 그대로 같게 유지한다.
 훅 자체가 오류를 내면 입력에 게이트 관련 단어가 있을 때만 막는다(Claude는 확인창, agy는 거부). agy 훅은 모든 도구 호출에 걸리므로, 오류 때 무조건 막으면 훅 버그 하나로 agy 전체가 멈출 수 있기 때문이다.
 
 게이트 로그는 각 훅 옆의 `*.log`(JSONL, 1MB 회전, 자격증명 가림)에 남는다. `gate_report.py`가 이를 합쳐 보여 준다.
@@ -68,9 +69,9 @@ python $HOME/.ai-gate/export_public_repo.py --test
 
 | 묶음 | 검사 내용 |
 |---|---|
-| `GateHooksInSyncTest` | 세 훅(Claude·agy·Codex)의 `GATED`·따옴표 처리·`REDACTIONS`·로그 한도가 같은지. 표본 명령 약 100개를 같게 판정하는지(`merge-base` 오탐, 따옴표 속 문자열, `bash -lc`·`git "push"`·`xargs rm` 같은 우회 변형 등). 자격증명을 가리는지 |
+| `GateHooksInSyncTest` | 세 훅(Claude·agy·Codex)의 판정 공통 블록이 글자 그대로 같은지, `GATED`·따옴표 처리 정규식·`REDACTIONS`·한도 상수가 같은지. 표본 명령 176개를 같게 판정하는지(`merge-base` 오탐, 따옴표 속 문자열, heredoc 본문, `bash -lc`·`git "push"`·`git reset "--hard"`·`rm.exe`·`\| bash`·옵션 약어 같은 우회 변형 등), 셸을 지정한 판정(bash·pwsh)이 맞는지, 100KB 직전 입력도 2초 안에 판정하는지. 자격증명을 가리는지 |
 | `GeminiPolicySafetyTest` | Gemini 정책 TOML 문법, 정규식 컴파일 여부, 중첩 반복자(Gemini가 ReDoS로 거부), 한 규칙에 `commandPrefix`와 `commandRegex`를 함께 썼는지 |
-| `HookOutputEncodingTest` | Claude·agy 훅 stdout이 ASCII JSON인지. cp949 한글 때문에 agy가 `invalid UTF-8`로 멈춘 장애의 재발 방지 |
+| `HookOutputEncodingTest` | Claude·agy 훅 stdout이 ASCII JSON인지. cp949 한글 때문에 agy가 `invalid UTF-8`로 멈춘 장애의 재발 방지. Claude 훅이 `tool_name`(Bash→bash, PowerShell→pwsh)에 맞는 셸 규칙으로 판정하는지 |
 | `ClaudeSettingsInSyncTest` | Claude 전역 `settings.json`과 Orca의 모든 Claude 프로필(계정마다 1개) `settings.json`의 권한과 훅이 같은지(순서 무관). 게이트 훅과 동기화 훅이 등록돼 있는지 |
 | `CodexHomeInSyncTest` | 전역 `~/.codex`와 Orca Codex 홈의 `hooks.json`(Orca 상태 훅은 예외), `rules/*.rules`와 Orca `_orca-global-*` 복사본이 같은지 |
 | `AgyGeminiHooksRegisteredTest` | agy `config/hooks.json`에 게이트 훅(PreToolUse, matcher `*`)과 동기화 훅(PostInvocation)이, Gemini `settings.json`에 동기화 훅(AfterTool)이 등록돼 있는지. Orca가 파일을 다시 써서 훅이 빠지는 경우를 잡는다 |
@@ -177,3 +178,7 @@ python $HOME/.ai-gate/export_public_repo.py --test
 - Codex `prefix_rule`은 `git -C . merge`처럼 옵션이 앞에 붙은 변형을 막지 못한다. Codex 훅은 기록만 한다.
 - agy 터미널 샌드박스에서는 Java(surefire) 테스트가 멈춘다. Java 프로젝트의 Node 3 검증은 Claude나 Codex에서 한다.
 - Claude 설정이나 훅을 바꾸면 이미 열린 세션에는 적용되지 않는다. 새 세션부터 적용된다.
+- Codex bypass 모드에서는 규칙에 안 걸린 명령이 그대로 실행된다. `git checkout` 전체 allow를 지웠어도 `git checkout <ref> <파일>`처럼 prefix 규칙으로 표현할 수 없는 변형은 막지 못한다(Codex 훅은 기록만 한다).
+- 훅 판정은 문자열 휴리스틱이다. 변수·`python -c`·git alias 경유, `$( )` 안에 따옴표를 다시 넣은 명령, `$'...'`(ANSI-C 문자열)은 셸과 다르게 해석해 놓칠 수 있다. 반대로 주석(`#`)·닫히지 않은 따옴표는 원문을 남기고 `$cmd = "..."`처럼 셸 이름이 든 문장의 문자열은 풀어서 보므로 오탐이 날 수 있다.
+- 판정 시간 상한 때문에 git 전역 옵션이 17개 이상이거나, 하위 명령 뒤 1,000자를 넘어서 위험 옵션이 오는 명령은 놓친다.
+- pwsh 에서 '=' 뒤 '#' 주석과 스마트 따옴표(‘’“”)는 따옴표·주석으로 인식하지 않아 그 안/뒤 명령을 놓칠 수 있다.

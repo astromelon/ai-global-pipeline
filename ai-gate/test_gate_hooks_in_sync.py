@@ -134,7 +134,118 @@ SAMPLE_COMMANDS = [
     ("git checkout -b fix/a origin/main", []),
     ("git checkout main 2>&1", []),
     ("cd ri/x", []),
+    # 2026-11-13 우회 보강(H1): 따옴표로 감싼 옵션·하위 명령
+    ('git reset "--hard" HEAD', ["git reset --hard"]),
+    ("git branch '-D' x", ["git branch -D"]),
+    ('git checkout "."', ["git checkout --"]),
+    ('git stash "drop"', ["git stash drop/clear"]),
+    ('glab "mr" merge 1', ["glab mr"]),
+    ('gh pr "merge" 1', ["gh pr merge"]),
+    ('glab api -X "DELETE" /x', ["glab api 쓰기"]),
+    # (H2) 셸별 따옴표·이스케이프·주석·heredoc
+    (r'echo "a\\" ; rm -rf build ; echo "b"', ["rm"]),
+    (r'echo "C:\tmp\" ; Remove-Item build ; echo "b"', ["Remove-Item"]),
+    ("echo hi # don't\nrm -rf build\necho 'done'", ["rm"]),
+    ("cat <<EOF\nit's\nEOF\nrm -rf build; echo 'x'", ["rm"]),
+    # (H3) 실행 파일 이름 변형
+    ("rm.exe -rf build", ["rm"]),
+    ('"/bin/rm" -rf build', ["rm"]),
+    ('env "rm" -rf build', ["rm"]),
+    ('FOO=1 "rm" -rf build', ["rm"]),
+    (r'"C:\tools\rm.exe" -rf build', ["rm"]),
+    ("gh.exe pr merge 1", ["gh pr merge"]),
+    ("glab.exe mr merge 1", ["glab mr"]),
+    ("git.cmd push", ["git push"]),
+    # (M1) 셸 전달 경로
+    ('powershell "Remove-Item build -Recurse"', ["Remove-Item"]),
+    ('echo "rm -rf build" | bash', ["rm"]),
+    ('bash <<< "rm -rf build"', ["rm"]),
+    ('Start-Process cmd -ArgumentList "/c git push"', ["git push"]),
+    ('Start-Process pwsh -ArgumentList "-c","rm x"', ["rm"]),
+    ('echo "$(git push)"', ["git push"]),
+    ("bash <<EOF\ngit push origin main\nEOF", ["git push"]),
+    ('iex @"\ngit push\n"@', ["git push"]),
+    # (M2) 옵션 약어·묶음, 줄 이음·이스케이프
+    ("git reset --har HEAD", ["git reset --hard"]),
+    ("git reset --h HEAD", ["git reset --hard"]),
+    ("git branch --del --for x", ["git branch -D"]),
+    ("git branch -d --force x", ["git branch -D"]),
+    ("git branch -d x -f", ["git branch -D"]),
+    ("git switch --discard main", ["git switch --discard-changes"]),
+    ("git switch --di main", ["git switch --discard-changes"]),
+    ("git checkout --fo main", ["git checkout --"]),
+    ("git checkout -qf main", ["git checkout --"]),
+    ("git restore --staged --w a", ["git restore"]),
+    ("git restore -SW a", ["git restore"]),
+    ("git \\\npush origin main", ["git push"]),
+    (r"git pu\sh origin main", ["git push"]),
+    ("git pu`sh origin main", ["git push"]),
+    # 오탐 대조(2026-11-13): 막지 않아야 함
+    ('git commit -m "fix: git push later"', []),
+    ('git log --grep "push"', []),
+    ('./build.sh "x"', []),
+    ('git commit -m "del"', []),
+    ("cat <<EOF > notes.md\nrun git push origin main\nrm -rf build\nEOF", ["git push", "rm"]),  # pwsh 는 heredoc 미인식으로 합집합 오탐(bash 단독은 [])
+    ("cat <<'EOF' > notes.md\nrun git push $(x)\nEOF", ["git push"]),  # pwsh 는 heredoc 미인식으로 합집합 오탐(bash 단독은 [])
+    ("git commit -m \"$(cat <<'EOF'\nfix: don't git push or rm -rf\nEOF\n)\"", ["git push", "rm"]),  # pwsh 는 heredoc 미인식(bash 단독은 [])
+    ("git commit -m @'\nmsg rm and git push\n'@", []),
+    ('git branch --format="%(refname:short)"', []),
+    ("git branch -a --format x", []),
+    ("git branch -d my-feature", []),
+    ("git reset --help", []),
+    ("git reset --soft HEAD~1", []),
+    ("git switch --detach HEAD", []),
+    ('echo "rm -rf" | grep x', []),
+    ("ssh-keygen -C 'rm x'", []),
+    ('git commit -m "use bash" -m "rm old"', []),
+    ('$s = @"\ngit push\n"@\nInvoke-Expression $s', []),  # 변수 경유는 알려진 한계(규칙 문서로 금지)
+    # 2026-11-13 리뷰 1차 보강(R1~R5)
+    ("cat <<EOF$x\nEOF$x\nrm -rf build\nEOF", ["rm"]),
+    ("cat <<'EOF'x\nEOFx\ngit push origin main\nEOF", ["git push"]),
+    ("cat <<E'OF'\nEOF\nrm -rf build\nE", ["rm"]),
+    ("echo $((1<<EOF))\nrm -rf build\nEOF", ["rm"]),
+    ("<# <<EOF #>\nRemove-Item -Recurse build\n#\nEOF", ["Remove-Item"]),
+    ("where.exe --% <<EOF\nRemove-Item -Recurse build\nEOF", ["Remove-Item"]),
+    ('git reset --"hard" HEAD', ["git reset --hard"]),
+    ('git reset -""-hard', ["git reset --hard"]),
+    ("git branch -'D' x", ["git branch -D"]),
+    ('git checkout -"f" main', ["git checkout --"]),
+    (r"printf 'git push\n' | bash", ["git push"]),
+    ('git -c core.sshCommand="ssh -i k" push origin main', ["git push"]),
 ]
+
+# 셸을 지정한 판정 (명령, 셸, 걸려야 하는 항목). Claude 훅은 Bash 도구 → "bash", PowerShell 도구 → "pwsh" 로 판정한다.
+SHELL_SAMPLE_COMMANDS = [
+    (r'echo "C:\tmp\" ; Remove-Item build ; echo "b"', "pwsh", ["Remove-Item"]),  # pwsh 는 \ 가 이스케이프 아님
+    (r'echo "C:\tmp\" ; Remove-Item build ; echo "b"', "bash", []),  # bash 에서는 한 문자열(닫히지 않음)
+    (r'echo "a\\" ; rm -rf build ; echo "b"', "bash", ["rm"]),
+    (r'echo "a\\" ; rm -rf build ; echo "b"', "pwsh", ["rm"]),
+    (r"git pu\sh origin main", "bash", ["git push"]),
+    (r"git pu\sh origin main", "pwsh", []),
+    ("git pu`sh origin main", "pwsh", ["git push"]),
+    ("git pu`sh origin main", "bash", []),
+    ("git \\\npush origin main", "bash", ["git push"]),
+    ("cat <<EOF\nit's\nEOF\nrm -rf build; echo 'x'", "bash", ["rm"]),
+    ("cat <<EOF\nit's\nEOF\nrm -rf build; echo 'x'", "pwsh", []),  # pwsh 는 heredoc 미인식(it's~echo ' 가 문자열)
+    ('git reset "--hard" HEAD', "pwsh", ["git reset --hard"]),
+    ("git status", "bash", []),
+    ("x" * 100_001, "bash", ["명령 길이 초과"]),
+    # 리뷰 1차 보강(R1, R2, R4)
+    ("cat <<EOF$x\nEOF$x\nrm -rf build\nEOF", "bash", ["rm"]),
+    ("cat <<'EOF'x\nEOFx\ngit push origin main\nEOF", "bash", ["git push"]),
+    ("cat <<E'OF'\nEOF\nrm -rf build\nE", "bash", ["rm"]),
+    ("echo $((1<<EOF))\nrm -rf build\nEOF", "bash", ["rm"]),
+    ("cat <<EOF > notes.md\nrun git push origin main\nrm -rf build\nEOF", "bash", []),
+    ("cat <<'EOF' > notes.md\nrun git push $(x)\nEOF", "bash", []),
+    ("git commit -m \"$(cat <<'EOF'\nfix: don't git push or rm -rf\nEOF\n)\"", "bash", []),
+    ("<# <<EOF #>\nRemove-Item -Recurse build\n#\nEOF", "pwsh", ["Remove-Item"]),
+    ("where.exe --% <<EOF\nRemove-Item -Recurse build\nEOF", "pwsh", ["Remove-Item"]),
+    (r"printf 'git push\n' | bash", "bash", ["git push"]),
+]
+
+# 세 훅이 글자 그대로 같아야 하는 판정 공통 블록의 시작·끝 표시
+COMMON_BLOCK_START = "# ==== 판정 공통 블록 시작"
+COMMON_BLOCK_END = "# ==== 판정 공통 블록 끝 ===="
 
 SAMPLE_SECRETS = [
     "git push https://user:glpat-ABCDEFGH12345678@git.example.com/x.git HEAD",
@@ -169,9 +280,14 @@ class GateHooksInSyncTest(unittest.TestCase):
 
     def test_quote_rules_identical(self):
         for name, module in self.others():
-            for attr in ("SHELL_PAYLOAD_PREFIX", "QUOTED_TOOL", "SIMPLE_WORD", "COMMAND_POSITION", "GIT_SUBCOMMAND"):
+            for attr in ("SHELL_WORD", "PIPE_TO_SHELL", "QUOTED_TOOL", "QUOTED_EXE", "SIMPLE_WORD",
+                         "COMMAND_POSITION", "QUOTED_ARG_CONTEXT", "HEREDOC", "HERESTRING"):
                 with self.subTest(hook=name, attr=attr):
                     ref, other = getattr(self.reference, attr), getattr(module, attr)
+                    self.assertEqual((ref.pattern, ref.flags), (other.pattern, other.flags))
+            for mode in self.reference.SHELL_MODES:
+                with self.subTest(hook=name, attr="SPECIAL", mode=mode):
+                    ref, other = self.reference.SPECIAL[mode], module.SPECIAL[mode]
                     self.assertEqual((ref.pattern, ref.flags), (other.pattern, other.flags))
 
     def test_redaction_lists_identical(self):
@@ -184,7 +300,9 @@ class GateHooksInSyncTest(unittest.TestCase):
 
     def test_log_limits_identical(self):
         for name, module in self.others():
-            for attr in ("LOG_MAX_BYTES", "COMMAND_MAX_CHARS"):
+            for attr in ("LOG_MAX_BYTES", "COMMAND_MAX_CHARS", "JUDGE_MAX_CHARS", "OVERSIZE_LABEL",
+                         "CONTEXT_MAX_CHARS", "NEST_MAX_DEPTH", "SHELL_MODES", "QUOTED_ARG_TOOLS",
+                         "COMMENT_START"):
                 with self.subTest(hook=name, attr=attr):
                     self.assertEqual(getattr(self.reference, attr), getattr(module, attr))
 
@@ -193,6 +311,44 @@ class GateHooksInSyncTest(unittest.TestCase):
             for command, expected in SAMPLE_COMMANDS:
                 with self.subTest(hook=name, command=command):
                     self.assertEqual(module.gate_hits(command), expected)
+
+    def test_common_block_identical(self):
+        # Given 세 훅 소스 / When 판정 공통 블록(시작~끝 표시 줄)을 잘라 비교 / Then 글자 그대로 같다
+        from pathlib import Path
+
+        def block(path):
+            text = Path(path).read_text(encoding="utf-8")
+            start, end = text.find(COMMON_BLOCK_START), text.find(COMMON_BLOCK_END)
+            self.assertTrue(0 <= start < end, f"{path} 에 판정 공통 블록 표시가 없습니다")
+            return text[start:end]
+        reference = block(HOOKS["claude"])
+        for name in ("agy", "codex"):
+            with self.subTest(hook=name):
+                self.assertEqual(reference, block(HOOKS[name]), f"{name} 훅의 판정 공통 블록이 Claude 훅과 다릅니다")
+
+    def test_verdict_with_shell(self):
+        for name, module in self.modules.items():
+            for command, shell, expected in SHELL_SAMPLE_COMMANDS:
+                with self.subTest(hook=name, shell=shell, command=command[:80]):
+                    self.assertEqual(module.gate_hits(command, shell), expected)
+
+    def test_long_input_performance(self):
+        # Given 판정 시간을 늘리는 긴 입력(H4) / When 판정 / Then 2초 안에 끝나고 끝의 git push 를 잡는다
+        import time
+        cases = {
+            "16KB": "sh a " * 2500 + '"a b" ' * 600 + "; git push",
+            "100KB 직전": "sh a " * 15000 + '"a b" ' * 3990 + "; git push",
+            "git 옵션 반복": "git -a " * 14200 + "; git push",
+            "git branch 반복": "git branch " * 9000 + "; git push",
+        }
+        for label, command in cases.items():
+            self.assertLessEqual(len(command), self.reference.JUDGE_MAX_CHARS)
+            with self.subTest(case=label, size=len(command)):
+                started = time.perf_counter()
+                hits = self.reference.gate_hits(command)
+                elapsed = time.perf_counter() - started
+                self.assertIn("git push", hits)
+                self.assertLess(elapsed, 2.0, f"{label} 판정에 {elapsed:.2f}초 걸렸습니다(훅 timeout 시 fail-open)")
 
     def test_same_redaction_on_secrets(self):
         for command in SAMPLE_SECRETS:
@@ -377,6 +533,12 @@ class HookOutputEncodingTest(unittest.TestCase):
         # Given 명령이 인자 배열로 오는 호출 / When agy 훅 실행 / Then 게이트 대상이면 거부
         payload = {"toolCall": {"name": "run_command", "args": {"command": ["git", "push"]}}}
         self.assert_ascii_json(self.run_hook("agy", payload))
+
+    def test_claude_shell_from_tool_name(self):
+        # Given PowerShell 에서만 실행되는 우회 / When tool_name 별로 Claude 훅 실행 / Then PowerShell 은 확인, Bash 는 통과
+        command = r'echo "C:\tmp\" ; Remove-Item build ; echo "b"'
+        self.assert_ascii_json(self.run_hook("claude", {"tool_name": "PowerShell", "tool_input": {"command": command}}))
+        self.assertEqual(self.run_hook("claude", {"tool_name": "Bash", "tool_input": {"command": command}}).strip(), b"")
 
 
 def _claude_settings_paths() -> dict:

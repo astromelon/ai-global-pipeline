@@ -45,7 +45,34 @@ GATED = [
     (r"(?i)(?:^|[\s;&|({`])(?:del|rmdir|rd|erase|ri)(?:\s|/[sqfpa?](?=[\s/]|$)|[;&|)}`])", "del/rmdir"),
     (r"(?i)\[(?:System\.)?IO\.(?:File|Directory)\]::Delete\b", ".NET Delete"),
     (r"(?i)\bStart-Process\b(?:\s+-FilePath)?\s+git(?:\.exe)?\b", "Start-Process git"),
+    # 2026-11-13 같은 효과의 명령 보강: git rm(--cached 제외), git pull(--ff-only 없음 또는 rebase), update-ref -d,
+    # checkout-index -f, worktree remove -f, find -delete, unlink(명령 위치), PowerShell .Delete() 메서드
+    (GIT + r"rm(?![-\w])(?![^;&|\n]{0,1000}\s--cached(?![-\w]))", "git rm"),
+    (GIT + r"pull(?![-\w])(?:(?=[^;&|\n]{0,1000}\s(?:--reb[\w=-]*|-[a-zA-Z]*r[a-zA-Z]*)(?![\w=-]))"
+                            r"|(?![^;&|\n]{0,1000}\s--ff-only(?![-\w])))", "git pull"),
+    (GIT + r"update-ref(?![-\w])(?=[^;&|\n]{0,1000}\s(?:-[a-zA-Z]*d[a-zA-Z]*|--d[\w-]*)(?![\w-]))", "git update-ref -d"),
+    (GIT + r"checkout-index(?![-\w])(?=[^;&|\n]{0,1000}\s(?:-[a-zA-Z]*f[a-zA-Z]*|--f[\w-]*)(?![\w-]))",
+     "git checkout-index -f"),
+    (GIT + r"worktree\s+remove(?![-\w])(?=[^;&|\n]{0,1000}\s(?:-[a-zA-Z]*f[a-zA-Z]*|--f[\w-]*)(?![\w-]))",
+     "git worktree remove --force"),
+    (r"(?<![\w.-])find(?:\.exe)?(?![\w.-])(?=[^;&|\n]{0,1000}\s-delete(?![\w-]))", "find -delete"),
+    (r"(?:(?:^|[;&|({`\n])\s*|(?<![\w.-])(?:sudo(?:\s+-\S+(?:\s+[^-\s]\S*)?){0,8}|xargs(?:\s+-\S+){0,8}|env|exec|-exec|-execdir|command|nohup|time)\s+|[/\\])"
+     r"unlink(?:\.exe)?(?=\s|$|[;&|)}`])", "unlink"),
+    (r"(?i)\.Delete\s*\(", ".Delete()"),
 ]
+
+# 스크립트 속 삭제: 따옴표 밖(판정 문자열)에 인터프리터가 있고 원문(따옴표·heredoc 안 포함)에 삭제 API 가 보이면 건다.
+# 따옴표를 비운 판정 문자열만 보는 GATED 로는 잡을 수 없어 gate_hits 에서 따로 판정한다.
+# 스크립트 파일(python x.py) 속 삭제와 os.system·subprocess 로 부르는 셸 명령은 보지 못한다.
+SCRIPT_DELETE_LABEL = "스크립트 삭제"
+SCRIPT_INTERPRETER = re.compile(r"(?i)(?:(?:^|[\s;&|({`\"'])(?:python[\d.]*|py|node|deno|bun|ruby|perl|php)(?:\.exe)?(?=[\s;&|)}`\"']|$)"
+                                r"|[/\\](?:python[\d.]*|py|node|deno|bun|ruby|perl|php)(?:\.exe)?(?=['\"]?[ \t]+[^\s;&|)}]))")
+SCRIPT_DELETE_API = re.compile(r"\bshutil\.rmtree\b|\bos\.(?:remove|unlink|rmdir|removedirs)\b"
+                               r"|\bfs(?:\.promises)?\.(?:rm|rmSync|unlink|unlinkSync|rmdir|rmdirSync)\b"
+                               r"|\.(?:rm|rmSync|unlinkSync|rmdirSync)\s*\(|\bDeno\.remove(?:Sync)?\b"
+                               r"|\b(?:unlink|rmdir|rmtree|remove_tree|removedirs)(?:\s*\(|\s+[$\"'@])"
+                               r"|\brimraf(?:\.\w+)?\s*\(|[\"']rimraf[\"']"
+                               r"|\bFileUtils\.(?:rm\w*|remove\w*)|\b(?:File|Dir)\.(?:delete|unlink|rmdir)\b")
 
 # ---- 따옴표·이스케이프 처리 ----
 # 명령을 bash 규칙과 PowerShell(pwsh) 규칙으로 각각 토큰으로 나눈 뒤, 따옴표 안 문자열(커밋 메시지·echo·코드 리터럴)은
@@ -58,6 +85,7 @@ CONTEXT_MAX_CHARS = 200  # 명령 위치 판단에 쓰는 직전 문맥 길이
 NEST_MAX_DEPTH = 4  # 셸 전달 문자열을 다시 풀어 보는 최대 깊이(넘으면 원문 유지)
 SHELL_MODES = ("bash", "pwsh")
 QUOTED_ARG_TOOLS = ("git", "glab", "gh")  # 따옴표 인자를 펼친 문자열(두 번째 결과)로도 판정하는 라벨의 첫 단어
+SEGMENT_SPLIT = re.compile(r"[;&|\n]")  # 셸은 이 문자에서 명령을 끝낸다. git 판정은 문장 단위로 한다(판정 시간)
 
 SHELL_WORD = re.compile(r"(?i)(?<![\w.-])(?:(bash|sh|zsh|dash|wsl|ssh|eval)|(pwsh|powershell|iex|invoke-expression)|cmd)"
                         r"(?:\.exe)?(?![\w.-])")
@@ -280,11 +308,19 @@ def gate_hits(command: str, shell: str = None) -> list:
         mains.add(main)
         quoted.add(quoted_args)
     quoted -= mains  # 같은 문자열은 한 번만 검사한다
+    segments = {text: SEGMENT_SPLIT.split(text) for text in mains | quoted}
     found = []
     for pattern, label in GATED:
-        texts = mains | quoted if label.split()[0] in QUOTED_ARG_TOOLS else mains
-        if any(re.search(pattern, text) for text in texts):
+        words = label.split()
+        texts = mains | quoted if words[0] in QUOTED_ARG_TOOLS else mains
+        if words[0] == "git":  # 하위 명령 글자가 든 문장만 본다(판정 시간)
+            hit = any(re.search(pattern, s) for text in texts for s in segments[text] if words[1] in s)
+        else:
+            hit = any(re.search(pattern, text) for text in texts)
+        if hit:
             found.append(label)
+    if SCRIPT_DELETE_API.search(command) and any(SCRIPT_INTERPRETER.search(text) for text in mains):
+        found.append(SCRIPT_DELETE_LABEL)
     return found
 # ==== 판정 공통 블록 끝 ====
 

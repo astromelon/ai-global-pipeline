@@ -21,7 +21,10 @@ BACKUP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "allow-bac
 GATED_SAMPLES = ["git push origin main", "git merge feat/x", "git rebase origin/main", "git reset --hard HEAD",
                  "git clean -fd", "git branch -D feat/x", "git checkout -- a.txt", "git checkout .",
                  "git checkout -f main", "git restore a.txt", "git stash drop", "git stash clear",
-                 "glab mr merge 1", "rm a.txt", "rm -rf build", "Remove-Item a.txt", "del a.txt", "rmdir build"]
+                 "glab mr merge 1", "rm a.txt", "rm -rf build", "Remove-Item a.txt", "del a.txt", "rmdir build",
+                 # 2026-11-13 같은 효과의 명령. 스크립트 속 삭제·.Delete()·find -delete 는 넣지 않는다(Bash(python *)·Bash(find *) 같은 일반 allow 를 모두 겹침으로 지우게 됨)
+                 "git rm a.txt", "git pull origin main", "git pull --rebase origin main", "git update-ref -d refs/heads/x",
+                 "git checkout-index -f -a", "git worktree remove --force ../wt", "unlink a.txt"]
 
 
 def settings_files() -> list:

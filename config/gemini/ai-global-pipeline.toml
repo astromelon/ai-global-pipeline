@@ -106,6 +106,84 @@ commandRegex = "[{(`]\\s*rm(?:\\s|$)"
 decision = "ask_user"
 priority = 900
 
+# ---- Node 4 승인 게이트: 같은 효과의 명령 (2026-11-13). 훅 GATED·스크립트 삭제 판정과 같은 기준 ----
+# git rm(--cached 만 쓰면 제외)
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "\\bgit\\b[^;&|\\n]*\\srm(?![-\\w])(?![^;&|\\n]*\\s--cached(?![-\\w]))"
+decision = "ask_user"
+priority = 900
+
+# git pull: --ff-only 가 없으면(merge 커밋·설정 pull.rebase)
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "\\bgit\\b[^;&|\\n]*\\spull(?![-\\w])(?![^;&|\\n]*\\s--ff-only(?![-\\w]))"
+decision = "ask_user"
+priority = 900
+
+# git pull: --rebase/-r/--rebase=… 가 있으면
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "\\bgit\\b[^;&|\\n]*\\spull(?![-\\w])[^;&|\\n]*\\s(?:--reb[\\w=-]*|-[a-zA-Z]*r[a-zA-Z]*)(?:\\s|$)"
+decision = "ask_user"
+priority = 900
+
+# git update-ref -d/--delete
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "\\bgit\\b[^;&|\\n]*\\supdate-ref(?![-\\w])[^;&|\\n]*\\s(?:-[a-zA-Z]*d[a-zA-Z]*|--d[\\w-]*)(?:\\s|$)"
+decision = "ask_user"
+priority = 900
+
+# git checkout-index -f/--force
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "\\bgit\\b[^;&|\\n]*\\scheckout-index(?![-\\w])[^;&|\\n]*\\s(?:-[a-zA-Z]*f[a-zA-Z]*|--f[\\w-]*)(?:\\s|$)"
+decision = "ask_user"
+priority = 900
+
+# git worktree remove -f/--force
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "\\bgit\\b[^;&|\\n]*\\sworktree\\s+remove(?![-\\w])[^;&|\\n]*\\s(?:-[a-zA-Z]*f[a-zA-Z]*|--f[\\w-]*)(?:\\s|$)"
+decision = "ask_user"
+priority = 900
+
+# find -delete, find -exec rm/unlink
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "\\bfind\\b[^;&|\\n]*\\s(?:-delete|-exec(?:dir)?\\s+(?:\\S*/)?(?:rm|unlink))(?:\\s|$)"
+decision = "ask_user"
+priority = 900
+
+# unlink(명령 위치)
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "(?:(?:^|[;&|({`])\\s*|\\b(?:sudo|xargs|env|exec|command|nohup|time)\\s+|/)unlink(?:\\.exe)?(?:\\s|$)"
+decision = "ask_user"
+priority = 900
+
+# xargs·sudo 옵션 뒤 unlink
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "\\b(?:xargs|sudo)\\b[^;&|\\n]*\\sunlink(?:\\s|$)"
+decision = "ask_user"
+priority = 900
+
+# PowerShell .Delete() 메서드
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "(?:\\)|\\$[\\w:]+)\\s*\\.Delete\\s*\\("
+decision = "ask_user"
+priority = 900
+
+# 스크립트 속 삭제: 인터프리터 + 삭제 API(따옴표·heredoc 안 포함)
+[[rule]]
+toolName = "run_shell_command"
+commandRegex = "^(?=[\\s\\S]*(?:(?:^|[\\s;&|({`\\\"'])(?:python[\\d.]*|py|node|deno|bun|ruby|perl|php)(?:\\.exe)?(?:[\\s;&|)}`\\\"']|$)|[/\\\\](?:python[\\d.]*|py|node|deno|bun|ruby|perl|php)(?:\\.exe)?[\\\"']?[ \\t]+[^\\s;&|)}]))[\\s\\S]*(?:\\bshutil\\.rmtree\\b|\\bos\\.(?:remove|unlink|rmdir|removedirs)\\b|\\bfs(?:\\.promises)?\\.(?:rm|rmSync|unlink|unlinkSync|rmdir|rmdirSync)\\b|\\.(?:rm|rmSync|unlinkSync|rmdirSync)\\s*\\(|\\bDeno\\.remove(?:Sync)?\\b|\\b(?:unlink|rmdir|rmtree|remove_tree|removedirs)(?:\\s*\\(|\\s+[$\\\"'@])|\\brimraf(?:\\.\\w+)?\\s*\\(|[\\\"']rimraf[\\\"']|\\bFileUtils\\.(?:rm\\w*|remove\\w*)|\\b(?:File|Dir)\\.(?:delete|unlink|rmdir)\\b)"
+decision = "ask_user"
+priority = 900
+
 # ---- Node 3 검증 루프: 조회·브랜치 생성·빌드/테스트 ----
 [[rule]]
 toolName = "run_shell_command"

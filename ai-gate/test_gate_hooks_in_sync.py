@@ -40,7 +40,7 @@ SAMPLE_COMMANDS = [
     # 하이픈이 붙은 읽기 전용 git 하위 명령은 게이트 대상이 아니다 (2026-11-09 agy merge-base 오탐)
     ("git merge-base feat/ktcu-attack-alert origin/ktcu", []),
     ("git merge-tree a b", []),
-    ("git checkout-index -f -a", []),
+    ("git checkout-index -f -a", ["git checkout-index -f"]),  # 2026-11-13 부터 게이트 대상(-f 는 작업 트리 덮어쓰기)
     ("git push-certs", []),
     ('$env:LC_ALL="C.UTF-8"; cd C:\\workspace\\redcms; git merge-base a origin/ktcu', []),
     ("git merge-base a b; git merge --ff-only a", ["git merge"]),
@@ -212,6 +212,89 @@ SAMPLE_COMMANDS = [
     ('git checkout -"f" main', ["git checkout --"]),
     (r"printf 'git push\n' | bash", ["git push"]),
     ('git -c core.sshCommand="ssh -i k" push origin main', ["git push"]),
+    # 2026-11-13 같은 효과의 명령 보강: git rm / git pull / update-ref -d / checkout-index -f / worktree remove -f
+    ("git rm a.txt", ["git rm"]),
+    ("git rm -rf .", ["git rm"]),
+    ("git -C repo rm -r src", ["rm", "git rm"]),  # 기존 rm 라벨도 함께 걸린다(-C 경로 뒤 rm)
+    ('git "rm" -r src', ["git rm"]),
+    ("git rm -r --cached .", []),
+    ("git rm --cached a; git rm b", ["git rm"]),
+    ("git pull", ["git pull"]),
+    ("git pull origin main", ["git pull"]),
+    ("git pull --rebase", ["git pull"]),
+    ("git pull -r origin main", ["git pull"]),
+    ("git pull --ff-only --rebase", ["git pull"]),
+    ("git pull --rebase=merges --ff-only", ["git pull"]),
+    ("git -c pull.rebase=true pull", ["git pull"]),
+    ("git pull --ff-only origin main", []),
+    ("git pull --ff-only", []),
+    ("git pull --no-rebase --ff-only", []),
+    ("git update-ref -d refs/heads/x", ["git update-ref -d"]),
+    ("git update-ref --delete refs/heads/x abc123", ["git update-ref -d"]),
+    ("git update-ref refs/heads/x HEAD", []),  # ref 덮어쓰기는 알려진 한계
+    ("git update-ref -m msg refs/heads/x HEAD", []),
+    ("git checkout-index -af", ["git checkout-index -f"]),
+    ("git checkout-index --force -- a.txt", ["git checkout-index -f"]),
+    ("git checkout-index -a", []),
+    ("git checkout-index --prefix=out/ -a", []),
+    ("git worktree remove --force ../wt", ["git worktree remove --force"]),
+    ("git worktree remove -f ../wt", ["git worktree remove --force"]),
+    ("git worktree remove ../wt", []),
+    ("git worktree add ../wt fix/a", []),
+    ("git worktree list", []),
+    # find -delete / unlink / .Delete()
+    ("find . -name '*.tmp' -delete", ["find -delete"]),
+    ("find build -type f -delete", ["find -delete"]),
+    ("find . -name x -exec rm {} \\;", ["rm"]),
+    ("find . -name '*.tmp'", []),
+    ('git commit -m "find -delete"', []),
+    ("unlink a.txt", ["unlink"]),
+    ("sudo unlink /tmp/x", ["unlink"]),
+    ("find . -name x | xargs unlink", ["unlink"]),
+    ("find . -name x -exec unlink {} +", ["unlink"]),
+    ("/usr/bin/unlink a", ["unlink"]),
+    ("ls; unlink a", ["unlink"]),
+    ("grep -rn unlink src", []),
+    ("man unlink", []),
+    ('echo "unlink a"', []),
+    ("git add src/unlink.py", []),
+    ("(Get-Item a.txt).Delete()", [".Delete()"]),
+    ("$f.Delete()", [".Delete()"]),
+    ("(Get-Item build).Delete($true)", [".Delete()"]),
+    ('git commit -m "call x.Delete()"', []),
+    ("$list.Remove(1)", []),
+    # 스크립트 속 삭제: 따옴표 밖 인터프리터 + 원문(따옴표·heredoc 안 포함)의 삭제 API
+    ("python -c \"import shutil; shutil.rmtree('build')\"", ["스크립트 삭제"]),
+    ("python3 -c 'import os; os.remove(\"a.txt\")'", ["스크립트 삭제"]),
+    ("python - <<'EOF'\nimport shutil\nshutil.rmtree('build')\nEOF", ["스크립트 삭제"]),
+    ("node -e \"require('fs').rmSync('dist', {recursive: true})\"", ["스크립트 삭제"]),
+    ("node -e \"require('rimraf').sync('dist')\"", ["스크립트 삭제"]),
+    ("py -c \"from pathlib import Path; Path('a').unlink()\"", ["스크립트 삭제"]),
+    ("ruby -e 'FileUtils.rm_rf(\"build\")'", ["스크립트 삭제"]),
+    ("perl -e 'unlink \"a.txt\"'", ["스크립트 삭제"]),
+    ("php -r \"unlink('a.txt');\"", ["스크립트 삭제"]),
+    ("deno eval \"await Deno.remove('x')\"", ["스크립트 삭제"]),
+    ("echo \"shutil.rmtree('x')\" | python", ["스크립트 삭제"]),
+    ('& "C:\\Python312\\python.exe" -c "import os; os.remove(\'a\')"', ["스크립트 삭제"]),
+    # 대조: 막지 않아야 함
+    ('git commit -m "use shutil.rmtree"', []),
+    ('git commit -m "fix python shutil.rmtree bug"', []),  # 인터프리터 이름이 따옴표 안에만 있음
+    ("pip install rimraf", []),
+    ("python -m pip install rimraf", []),
+    ("npm i -D rimraf", []),
+    ("python -m pytest -k unlink", []),
+    ("python -B ai-gate/test_gate_hooks_in_sync.py -v", []),
+    ("cat > clean.py <<'EOF'\nimport shutil\nshutil.rmtree('build')\nEOF", []),  # 파일 쓰기만 함
+    ("python clean.py", []),  # 스크립트 파일 속 삭제는 알려진 한계
+    ("grep -rn shutil.rmtree src", []),
+    ("python -c \"import os; print(os.getcwd())\"", []),
+    # 2026-11-13 리뷰 1차 보강(R2, R4)
+    ("find . -print0 | xargs -0 -n1 unlink", ["unlink"]),
+    ("xargs -n1 unlink < list.txt", ["unlink"]),
+    ("sudo -u x unlink a", ["unlink"]),
+    ('grep -rn "fs.rmSync(" packages/node', []),
+    ('rg "os.remove(" src/py', []),
+    ('/usr/bin/python3 -c "import shutil; shutil.rmtree(\'b\')"', ["스크립트 삭제"]),
 ]
 
 # 셸을 지정한 판정 (명령, 셸, 걸려야 하는 항목). Claude 훅은 Bash 도구 → "bash", PowerShell 도구 → "pwsh" 로 판정한다.
@@ -241,6 +324,9 @@ SHELL_SAMPLE_COMMANDS = [
     ("<# <<EOF #>\nRemove-Item -Recurse build\n#\nEOF", "pwsh", ["Remove-Item"]),
     ("where.exe --% <<EOF\nRemove-Item -Recurse build\nEOF", "pwsh", ["Remove-Item"]),
     (r"printf 'git push\n' | bash", "bash", ["git push"]),
+    # 2026-11-13 스크립트 속 삭제: heredoc 본문(bash)·문자열(pwsh 는 heredoc 미인식) 어느 쪽이든 원문에서 삭제 API 를 본다
+    ("python - <<'EOF'\nimport shutil\nshutil.rmtree('build')\nEOF", "bash", ["스크립트 삭제"]),
+    ("python - <<'EOF'\nimport shutil\nshutil.rmtree('build')\nEOF", "pwsh", ["스크립트 삭제"]),
 ]
 
 # 세 훅이 글자 그대로 같아야 하는 판정 공통 블록의 시작·끝 표시
@@ -340,6 +426,11 @@ class GateHooksInSyncTest(unittest.TestCase):
             "100KB 직전": "sh a " * 15000 + '"a b" ' * 3990 + "; git push",
             "git 옵션 반복": "git -a " * 14200 + "; git push",
             "git branch 반복": "git branch " * 9000 + "; git push",
+            "git pull 반복": "git pull " * 11000 + "; git push",
+            "git 옵션 반복+하위 명령 글자": "git -a " * 14000 + "; git push merge rebase reset clean branch checkout restore "
+                                            "stash switch rm pull update-ref checkout-index worktree",
+            "find 반복": "find " * 19900 + "; git push",
+            "스크립트 API 반복": "python -c " + "os.unlink " * 9900 + "; git push",
         }
         for label, command in cases.items():
             self.assertLessEqual(len(command), self.reference.JUDGE_MAX_CHARS)
@@ -462,9 +553,27 @@ class GeminiPolicySafetyTest(unittest.TestCase):
 
 
 GEMINI_NEW_GATED = ["git branch -Df x", "git branch --delete --force x", "git branch --force --delete x",
-                    "git checkout HEAD src/a.java", "find . | xargs rm", "if ($x) {rm a.txt}", "del/q a.txt", "rd/s/q build"]
+                    "git checkout HEAD src/a.java", "find . | xargs rm", "if ($x) {rm a.txt}", "del/q a.txt", "rd/s/q build",
+                    # 2026-11-13 같은 효과의 명령
+                    "git rm -rf .", "git pull", "git pull origin main", "git pull --rebase origin main",
+                    "git update-ref -d refs/heads/x", "git checkout-index -f -a", "git worktree remove --force ../wt",
+                    "find . -name x -delete", "find . -exec rm {} ;", "unlink a.txt", "(Get-Item a.txt).Delete()",
+                    "python -c \"import shutil; shutil.rmtree('build')\"",
+                    "python - <<'EOF'\nimport shutil\nshutil.rmtree('build')\nEOF",
+                    # 2026-11-13 리뷰 1차 보강(R2, R4)
+                    "find . -print0 | xargs -0 -n1 unlink", "xargs -n1 unlink < list.txt", "sudo -u x unlink a",
+                    '/usr/bin/python3 -c "import shutil; shutil.rmtree(\'b\')"']
 GEMINI_NEW_PASSED = ["git checkout main && git pull --ff-only origin main", "git checkout -b fix/a origin/main",
-                     "git branch -d fix/draft", "git checkout main 2>&1", "cd ri/x", "docker rm c1"]
+                     "git branch -d fix/draft", "git checkout main 2>&1", "cd ri/x", "docker rm c1",
+                     # 2026-11-13 같은 효과의 명령 대조
+                     "git rm --cached a", "git rm -r --cached .", "git pull --ff-only origin main",
+                     "git worktree add ../wt fix/a", "git worktree remove ../wt", "git checkout-index -a",
+                     "find . -name x", "grep -rn unlink src", "pip install rimraf", 'git commit -m "use shutil.rmtree"',
+                     "python -m pytest -k unlink", "git update-ref refs/heads/x HEAD",
+                     # 2026-11-13 리뷰 1차 보강(R1, R4)
+                     'grep -rn "repository.delete(" src', r"grep -rn '\.delete(' src/main/java",
+                     "sed -i 's/repo.delete(x)/repo.deleteById(x)/' A.java", 'git log -S ".delete(" --oneline',
+                     'grep -rn "fs.rmSync(" packages/node', 'rg "os.remove(" src/py']
 
 
 class HookOutputEncodingTest(unittest.TestCase):
@@ -760,6 +869,28 @@ AGY_DENY_SAMPLES = [
     ("glab api projects/6", False), ("gh pr view 1", False), ("git branch -d fix/a", False),
     ('git commit -m "fix rm bug"', False), ('echo "git push origin main"', False),
     ("Write-Output 'remove-item later'", False), ("python -m pytest", False), ("./mvnw test", False),
+    # 2026-11-13 같은 효과의 명령
+    ("git rm a.txt", True), ("git rm -rf .", True), ("git -C repo rm x", True), ("git add a && git rm b", True),
+    ("git pull", True), ("git pull origin main", True), ("git pull --rebase", True), ("git pull -r origin main", True),
+    ("git pull --ff-only --rebase", True), ("git update-ref -d refs/heads/x", True),
+    ("git checkout-index -f -a", True), ("git checkout-index -af", True), ("git worktree remove --force ../wt", True),
+    ("find . -name x -delete", True), ("find . -exec rm {} +", True), ("unlink a.txt", True),
+    ("find . | xargs unlink", True), ("(Get-Item a.txt).Delete()", True), ("$f.Delete()", True),
+    ("python -c \"import shutil; shutil.rmtree('build')\"", True),
+    ("python - <<'EOF'\nimport shutil\nshutil.rmtree('build')\nEOF", True),
+    ("echo \"shutil.rmtree('x')\" | python", True), ("node -e \"require('fs').rmSync('dist')\"", True),
+    ("git rm --cached a", False), ("git rm -r --cached .", False), ("git pull --ff-only origin main", False),
+    ("git update-ref refs/heads/x HEAD", False), ("git checkout-index -a", False),
+    ("git worktree add ../wt fix/a", False), ("git worktree list", False), ("git worktree remove ../wt", False),
+    ("find . -name x", False), ("grep -rn unlink src", False), ("git add src/unlink.py", False),
+    ("pip install rimraf", False), ('git commit -m "use shutil.rmtree"', False),
+    ("python -m pytest -k unlink", False), ("python clean.py", False),
+    # 2026-11-13 리뷰 1차 보강(R1, R2, R4)
+    ("find . -print0 | xargs -0 -n1 unlink", True), ("xargs -n1 unlink < list.txt", True), ("sudo -u x unlink a", True),
+    ('/usr/bin/python3 -c "import shutil; shutil.rmtree(\'b\')"', True),
+    ('grep -rn "repository.delete(" src', False), (r"grep -rn '\.delete(' src/main/java", False),
+    ("sed -i 's/repo.delete(x)/repo.deleteById(x)/' A.java", False), ('git log -S ".delete(" --oneline', False),
+    ('grep -rn "fs.rmSync(" packages/node', False), ('rg "os.remove(" src/py', False),
 ]
 
 

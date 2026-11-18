@@ -175,17 +175,24 @@ def compare(repo: Path, files: dict) -> tuple:
     return changed, [rel for rel in stale if rel not in ignored]
 
 
+GIT_ARGS_CHUNK = 200  # 경로 200개 × 평균 100자 안팎이면 명령줄 한도 안에 든다
+
+
 def git_ignored(repo: Path, rels: list) -> set:
     """rels 중 .gitignore 로 무시되는 경로. 추적 중인 파일은 무시 대상이 아니다. git 이 판정 못 하면 빈 집합."""
-    if not rels:
-        return set()
-    try:
-        # --stdin 은 Git for Windows 에서 일부 줄을 빠뜨려(2026-11-18 실측) 경로를 인자로 넘긴다
-        r = subprocess.run(["git", "-C", str(repo), "check-ignore", "--", *rels],
-                           capture_output=True, text=True, encoding="utf-8")
-    except OSError:
-        return set()
-    return set(r.stdout.splitlines()) if r.returncode in (0, 1) else set()
+    ignored = set()
+    # --stdin 은 Git for Windows 에서 일부 줄을 빠뜨려(2026-11-18 실측) 경로를 인자로 넘긴다.
+    # Windows 명령줄 한도(32K자)를 넘지 않게 나눠 넘긴다. -z 는 --stdin 전용이라, 한글 경로가 "\352..." 로
+    # 이스케이프되지 않도록 이 호출에만 core.quotePath=false 를 준다(설정 파일은 바꾸지 않는다).
+    for i in range(0, len(rels), GIT_ARGS_CHUNK):
+        try:
+            r = subprocess.run(["git", "-C", str(repo), "-c", "core.quotePath=false", "check-ignore", "--",
+                                *rels[i:i + GIT_ARGS_CHUNK]], capture_output=True, text=True, encoding="utf-8")
+        except OSError:
+            return ignored
+        if r.returncode in (0, 1):
+            ignored.update(r.stdout.splitlines())
+    return ignored
 
 
 def repo_test_env(repo: Path) -> dict:

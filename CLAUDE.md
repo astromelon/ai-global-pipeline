@@ -58,7 +58,8 @@ python ai-gate/test_gate_hooks_in_sync.py GateHooksInSyncTest.test_verdict_on_sa
 
 - `ReadmeInSyncTest`: `ai-gate/README.md`의 테스트 묶음 표와 테스트 개수("동기화 테스트(N개)")가 코드와 같아야 한다.
   테스트·묶음을 추가하면 README 두 곳을 함께 고친다.
-- Gemini 정책 정규식에 중첩 반복자 금지(Gemini가 ReDoS로 거부), 한 규칙에 `commandPrefix`와 `commandRegex` 동시 사용 금지.
+- Gemini 정책 정규식: Gemini는 `"command":"`+정규식을 플래그 없는 JS RegExp로 만들어 키 정렬·NUL로 감싼 JSON 인자에 대고 검사한다. `(?i)` 금지(대소문자는 `[Aa]`), 그룹에 반복자 금지(`(?:X)?` 대신 `(?:X|)`, 반복은 상한 있는 문자 클래스에만 — 그러면 ReDoS 휴리스틱이 걸릴 수 없다), `^`·끝의 `$`는 안 맞음, 훑기는 `[^;&|\x00\\]{0,1000}`처럼 상한을 두고 이어 붙이지 않으며, 공백 반복을 나란히 두지 않는다. 어기면 규칙이 조용히 빠지거나 안 걸리거나 느려진다. 자세한 규칙은 정책 파일 머리 주석, 검사는 `GeminiPolicySafetyTest`.
+- Gemini commandPrefix는 대소문자를 구분하고 접두어 뒤 `[\s"]`만 보므로 게이트 규칙에 쓰지 않는다. 한 규칙에 `commandPrefix`와 `commandRegex` 동시 사용 금지.
 - agy deny 정규식은 RE2라 전후방 탐색(lookaround) 금지.
 - Claude·agy 훅 stdout은 ASCII JSON이어야 한다(cp949 한글로 agy가 `invalid UTF-8`로 멈춘 장애 재발 방지).
 - 훅 자체 오류 시에는 입력에 게이트 관련 단어가 있을 때만 막는다(무조건 막으면 agy 전체가 멈춤).
@@ -69,3 +70,4 @@ python ai-gate/test_gate_hooks_in_sync.py GateHooksInSyncTest.test_verdict_on_sa
 `python -c`·`node -e`·변수·git alias로 감싼 명령은 문자열 판정으로 못 잡는다(규칙 문서로만 금지).
 Codex는 `git -C . merge`처럼 옵션이 앞에 붙은 명령을 prefix 규칙으로 막지 못한다.
 agy는 `--dangerously-skip-permissions`에서 settings의 `ask`를 무시한다(`deny`는 지킨다).
+Gemini 정책(정규식)은 따옴표·이스케이프로 쪼갠 명령(`git "push"`, `git reset "--hard"`, `git pu\sh`), 셸 전달(`| bash`, `Start-Process pwsh -ArgumentList`), 줄 이음, `sudo -u 사용자 rm`처럼 앞 단어 뒤 일반 인자, 전역 옵션 4개 이상(`git -c a=1 -c b=2 -c c=3 -C x push`)을 못 잡는다(목록: 테스트의 `GEMINI_KNOWN_GAPS`). 반대로 명령 위치를 글자로만 보므로 `print('git push')`, here-string 속 `git push`, `echo "(rm x)"`, `ri Array`(PowerShell에서는 실제로 Remove-Item) 같은 문자열에도 확인을 묻고, 따옴표 안의 `;`·`|`·`(`·`&`도 명령 경계로 본다(`git commit -m "tidy; git push later"`, `rg "git push|rm -rf" .`). 앞 단어·옵션 값이 따옴표로 묶이거나(`FOO="x" rm a`, `git --git-dir="x" push`) `env -C`·`timeout --signal=…`·`sudo --`·`doas` 같은 형태도 못 잡는다. 실행 파일 이름은 대소문자를 무시하고(`GIT push`도 묻는다), git 하위 명령은 구분한다.

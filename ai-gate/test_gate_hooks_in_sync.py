@@ -8,6 +8,7 @@ Claude·agy·Codex 훅은 같은 판정 목록(GATED), 따옴표 처리 규칙, 
 """
 import importlib.util
 import os
+import re
 import unittest
 
 HOOKS = {
@@ -456,6 +457,240 @@ GEMINI_POLICY_DIR = os.environ.get("NODE4_GEMINI_POLICY_DIR", os.path.expanduser
 # Gemini 가 ReDoS 위험으로 거부했던 실제 패턴(2026-11-09). 검사기가 이것을 반드시 잡아야 한다.
 KNOWN_REJECTED = r"\bgit\s+(?:-\S+(?:\s+[^-\s]\S*)?\s+)*(?:checkout\b)"
 
+# ---- Gemini CLI 0.68.0 정책 로드·판정 흉내 (2026-11-18) ----
+# Gemini 가 로드하지 못하고 조용히 버린 실제 규칙(2026-11-18). 앞 4개는 (?i) 때문에 invalid,
+# 뒤 3개는 ReDoS 휴리스틱(unsafe). 이식한 로더 검사가 반드시 모두 거부해야 한다.
+GEMINI_DROPPED_2026_11_18 = [
+    (r'''(?i)\bglab\s+api\b[^;&|\n]*(?:-X|--method)\s*=?\s*(?:PUT|POST|PATCH|DELETE)\b''', "invalid"),
+    (r'''(?i)\[(?:System\.)?IO\.(?:File|Directory)\]::Delete\b''', "invalid"),
+    (r'''(?i)\bStart-Process\b[^;&|\n]*\sgit(?:\.exe)?\b''', "invalid"),
+    (r'''(?i)(?:^|[\s;&|{(])(?:del|rmdir|rd|erase|ri)/[sqfpa?]''', "invalid"),
+    (r'''\bfind\b[^;&|\n]*\s(?:-delete|-exec(?:dir)?\s+(?:\S*/)?(?:rm|unlink))(?:\s|$)''', "unsafe"),
+    (r'''(?:(?:^|[;&|({`])\s*|\b(?:sudo|xargs|env|exec|command|nohup|time)\s+|/)unlink(?:\.exe)?(?:\s|$)''', "unsafe"),
+    (r'''^(?=[\s\S]*(?:(?:^|[\s;&|({`\"'])(?:python[\d.]*|py|node|deno|bun|ruby|perl|php)(?:\.exe)?(?:[\s;&|)}`\"']|$)|[/\\](?:python[\d.]*|py|node|deno|bun|ruby|perl|php)(?:\.exe)?[\"']?[ \t]+[^\s;&|)}]))[\s\S]*(?:\bshutil\.rmtree\b|\bos\.(?:remove|unlink|rmdir|removedirs)\b|\bfs(?:\.promises)?\.(?:rm|rmSync|unlink|unlinkSync|rmdir|rmdirSync)\b|\.(?:rm|rmSync|unlinkSync|rmdirSync)\s*\(|\bDeno\.remove(?:Sync)?\b|\b(?:unlink|rmdir|rmtree|remove_tree|removedirs)(?:\s*\(|\s+[$\"'@])|\brimraf(?:\.\w+)?\s*\(|[\"']rimraf[\"']|\bFileUtils\.(?:rm\w*|remove\w*)|\b(?:File|Dir)\.(?:delete|unlink|rmdir)\b)''', "unsafe"),
+]
+# Gemini isSafeRegExp 의 휴리스틱 정규식(원문 그대로). Python re 에서도 같은 뜻이다.
+GEMINI_NESTED_QUANTIFIER = re.compile(r"\([^)]*[*+?{].*\)[*+?{]")
+GEMINI_MAX_PATTERN_LENGTH = 2048
+
+
+def _js_incompatible(pattern: str) -> bool:
+    """플래그 없는 JS RegExp 와 뜻이 다르거나 JS 가 거부하는 문법이면 True.
+
+    (?i) (?i: (?P< (?# (?> 같은 Python 전용 그룹, Python 전용 이스케이프 \\A \\Z \\z(JS 에선 글자 A·Z·z),
+    소유 반복자(*+ ++ ?+ {m,n}+, JS 는 거부). 이스케이프·문자 클래스 안은 건너뛴다.
+    """
+    skeleton, i, in_class = [], 0, False
+    while i < len(pattern):
+        c = pattern[i]
+        if c == "\\":
+            if not in_class and pattern[i + 1:i + 2] in ("A", "Z", "z"):
+                return True
+            skeleton.append("E")
+            i += 2
+            continue
+        if in_class:
+            if c == "]":
+                in_class = False
+                skeleton.append("C")
+        elif c == "[":
+            in_class = True
+            if pattern[i + 1:i + 2] == "]":  # []] / [^]] 의 첫 ] 는 글자
+                i += 1
+        else:
+            skeleton.append(c)
+        i += 1
+    s = "".join(skeleton)
+    return bool(re.search(r"\(\?[A-Za-z#>-]|[*+?]\+|\{\d+(?:,\d*)?\}\+", s))
+
+
+def gemini_load_error(command_regex: str):
+    """Gemini 0.68.0 정책 로더가 이 commandRegex 를 버리는 이유('invalid'|'too-long'|'unsafe'), 받아들이면 None."""
+    pattern = '"command":"' + command_regex
+    try:
+        re.compile(pattern)
+    except re.error:
+        return "invalid"
+    if _js_incompatible(pattern):
+        return "invalid"
+    if len(pattern) > GEMINI_MAX_PATTERN_LENGTH:
+        return "too-long"
+    if GEMINI_NESTED_QUANTIFIER.search(pattern):
+        return "unsafe"
+    return None
+
+
+def gemini_escape_regex(text: str) -> str:
+    """Gemini escapeRegex2 와 같은 글자를 이스케이프한다."""
+    return re.sub(r'[-\[\]{}()*+?.,\\^$|#\s"]', lambda m: "\\" + m.group(0), text)
+
+
+def gemini_args_patterns(rule) -> list:
+    """Gemini buildArgsPatterns: 규칙 하나가 만드는 정규식 문자열 목록."""
+    import json
+    if "commandPrefix" in rule:
+        prefixes = rule["commandPrefix"] if isinstance(rule["commandPrefix"], list) else [rule["commandPrefix"]]
+        return [gemini_escape_regex('"command":' + json.dumps(p, ensure_ascii=False)[:-1]) + r'(?:[\s"]|\\")'
+                for p in prefixes]
+    if "commandRegex" in rule:
+        return ['"command":"' + rule["commandRegex"]]
+    return [rule["argsPattern"]] if "argsPattern" in rule else []
+
+
+def gemini_stringify_args(args: dict) -> str:
+    """Gemini stableStringify(최상위): 키 정렬, 키·값 쌍마다 NUL 로 감싼다. 없는 키(undefined)만 빠지고 None 은 null."""
+    import json
+
+    def enc(value):
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return "{" + ",".join("\0" + enc(k) + ":" + enc(args[k]) + "\0" for k in sorted(args)) + "}"
+
+
+GEMINI_SHELL_WRAPPER = re.compile(r"^\s*(?:(?:(?:\S+/)?(?:sh|bash|zsh))\s+-c|cmd\.exe\s+/c|powershell(?:\.exe)?\s+"
+                                  r"(?:-NoProfile\s+)?-Command|pwsh(?:\.exe)?\s+(?:-NoProfile\s+)?-Command)\s+", re.I)
+
+
+def gemini_strip_shell_wrapper(command: str) -> str:
+    """Gemini stripShellWrapper. bash -c "..." 본문의 shell-quote 해석은 \\" \\\\ \\$ \\` 풀기로 흉내 낸다."""
+    m = GEMINI_SHELL_WRAPPER.match(command)
+    if not m:
+        return command.strip()
+    body = command[m.end():].strip()
+    if len(body) >= 2 and body[0] == body[-1] and body[0] in "\"'":
+        posix_dq = m.group(0).strip().endswith("-c") and body[0] == '"'
+        body = body[1:-1]
+        if posix_dq:
+            body = re.sub(r'\\(["\\$`])', r"\1", body)
+    return body
+
+
+def gemini_policy_asks(rules, args: dict) -> bool:
+    """Gemini 최상위 판정 + 셸 래퍼를 벗긴 재판정 흉내. 로드 실패 규칙은 Gemini 처럼 뺀다.
+
+    JS 의 \\w·\\b·\\d 는 ASCII 라 re.ASCII 로 맞춘다(남는 차이: JS \\s 는 유니코드 공백도 포함).
+    하위 명령(PowerShell AST·bash 파서) 재판정은 흉내 내지 않는다 — 여기서 ASK 면 Gemini 도 ASK 다.
+    """
+    patterns = [re.compile(p, re.ASCII) for rule in rules
+                if not ("commandRegex" in rule and gemini_load_error(rule["commandRegex"]))
+                for p in gemini_args_patterns(rule)]
+
+    def asks(a):
+        text = gemini_stringify_args(a)
+        return any(p.search(text) for p in patterns)
+    if asks(args):
+        return True
+    command = args.get("command")
+    if isinstance(command, str):
+        stripped = gemini_strip_shell_wrapper(command)
+        if stripped != command.strip():
+            return asks({"command": stripped, "dir_path": args.get("dir_path")} if "dir_path" in args
+                        else {"command": stripped})
+    return False
+
+
+# Gemini 0.68.0 의 escapeRegex2·isSafeRegExp·buildArgsPatterns·stableStringify·stripShellWrapper 를 옮긴 node 판정기.
+# 입력 {rules, cases:[args], probes:[pattern]} → 출력 {dropped, asks, ms(판정마다), probesSafe}
+GEMINI_POLICY_SIM_JS = r"""
+const fs = require("fs");
+const { rules, cases, probes } = JSON.parse(fs.readFileSync(0, "utf8"));
+function escapeRegex2(text) { return text.replace(/[-[\]{}()*+?.,\\^$|#\s"]/g, "\\$&"); }
+function isSafeRegExp(pattern) {
+  try { new RegExp(pattern); } catch { return false; }
+  if (pattern.length > 2048) { return false; }
+  const nestedQuantifierPattern = /\([^)]*[*+?{].*\)[*+?{]/;
+  if (nestedQuantifierPattern.test(pattern)) { return false; }
+  return true;
+}
+function buildArgsPatterns(argsPattern, commandPrefix, commandRegex) {
+  if (commandPrefix) {
+    const prefixes = Array.isArray(commandPrefix) ? commandPrefix : [commandPrefix];
+    return prefixes.map((prefix) => {
+      const encodedPrefix = JSON.stringify(prefix);
+      const openQuotePrefix = encodedPrefix.substring(0, encodedPrefix.length - 1);
+      return `${escapeRegex2(`"command":${openQuotePrefix}`)}(?:[\\s"]|\\\\")`;
+    });
+  }
+  if (commandRegex) { return [`"command":"${commandRegex}`]; }
+  return [argsPattern];
+}
+function stableStringify(v, top) {
+  if (v === undefined || v === null) return "null";
+  if (typeof v !== "object") return JSON.stringify(v);
+  if (Array.isArray(v)) return "[" + v.map((x) => stableStringify(x, false)).join(",") + "]";
+  return "{" + Object.keys(v).sort().filter((k) => v[k] !== undefined).map((k) => {
+    const s = JSON.stringify(k) + ":" + stableStringify(v[k], false);
+    return top ? "\0" + s + "\0" : s;
+  }).join(",") + "}";
+}
+function stripShellWrapper(command) {
+  const pattern = /^\s*(?:(?:(?:\S+\/)?(?:sh|bash|zsh))\s+-c|cmd\.exe\s+\/c|powershell(?:\.exe)?\s+(?:-NoProfile\s+)?-Command|pwsh(?:\.exe)?\s+(?:-NoProfile\s+)?-Command)\s+/i;
+  const m = command.match(pattern);
+  if (!m) return command.trim();
+  let c = command.substring(m[0].length).trim();
+  if (c.length >= 2 && ((c.startsWith('"') && c.endsWith('"')) || (c.startsWith("'") && c.endsWith("'")))) {
+    const posixDq = m[0].trim().endsWith("-c") && c.startsWith('"');
+    c = c.substring(1, c.length - 1);
+    if (posixDq) c = c.replace(/\\(["\\$`])/g, "$1");
+  }
+  return c;
+}
+const dropped = [];
+const pats = [];
+for (const r of rules) {
+  for (const p of buildArgsPatterns(r.argsPattern, r.commandPrefix, r.commandRegex)) {
+    if (isSafeRegExp(p)) { pats.push(new RegExp(p)); } else { dropped.push(p); }
+  }
+}
+const test = (args) => { const s = stableStringify(args, true); return pats.some((p) => p.test(s)); };
+const ms = [];
+const asks = cases.map((args) => {
+  const t0 = Date.now();
+  let ask = test(args);
+  if (!ask && typeof args.command === "string") {
+    const stripped = stripShellWrapper(args.command);
+    if (stripped !== args.command.trim()) {
+      const again = { command: stripped };
+      if ("dir_path" in args) again.dir_path = args.dir_path;
+      ask = test(again);
+    }
+  }
+  ms.push(Date.now() - t0);
+  return ask;
+});
+process.stdout.write(JSON.stringify({ dropped, asks, ms, probesSafe: (probes || []).map(isSafeRegExp) }));
+"""
+# 정상 명령에 붙여도 걸리면 안 되는 description·dir_path(규칙이 명령 값 밖으로 새는지 검사)
+GEMINI_LEAKY_DESCRIPTION = ("Check status before git pull, git checkout . and rm -rf build; python uses shutil.rmtree; "
+                            "unlink a; find . -delete; del/s x; Start-Process git; glab api -X POST x; {rm x}")
+GEMINI_LEAKY_DIR_PATH = "C:\\dev\\rm x"
+# Gemini 정책이 훅과 다르게 판정하는 훅 표본(2026-11-18). 정규식 정책으로는 따옴표·이스케이프·셸 전달을 풀 수 없다.
+# 훅은 걸지만 Gemini 정책은 놓치는 것(이유)
+GEMINI_KNOWN_GAPS = {
+    'git pu""sh origin main': '따옴표로 쪼갠 단어',
+    'git reset "--hard" HEAD': '따옴표로 감싼 옵션',
+    "git branch '-D' x": '따옴표로 감싼 옵션',
+    'git stash "drop"': '따옴표로 감싼 인자',
+    'glab "mr" merge 1': '따옴표로 감싼 하위 명령',
+    'gh pr "merge" 1': '따옴표로 감싼 하위 명령',
+    'echo "rm -rf build" | bash': '셸 전달: 파이프',
+    "printf 'git push\\n' | bash": '셸 전달: 파이프',
+    'Start-Process pwsh -ArgumentList "-c","rm x"': '셸 전달: Start-Process 인자',
+    'git \\\npush origin main': '줄 이음',
+    'git pu\\sh origin main': '백슬래시 이스케이프',
+    'git pu`sh origin main': '백틱 이스케이프',
+    "cat <<'EOF' > notes.md\nrun git push $(x)\nEOF": 'heredoc 본문(훅은 $( ) 가 있으면 보수적으로 건다)',
+    'git commit -m "$(cat <<\'EOF\'\nfix: don\'t git push or rm -rf\nEOF\n)"': '명령 치환 속 heredoc(훅은 보수적으로 건다)',
+    'git reset --"hard" HEAD': '따옴표로 쪼갠 옵션',
+    'git reset -""-hard': '따옴표로 쪼갠 옵션',
+    "git branch -'D' x": '따옴표로 쪼갠 옵션',
+    'git checkout -"f" main': '따옴표로 쪼갠 옵션',
+}
+# 훅은 통과시키지만 Gemini 정책은 확인을 묻는 것(이유)
+GEMINI_KNOWN_EXTRA_ASKS = {
+    'python -c "print(\'git push\')"': '( 뒤 따옴표로 시작한 git 을 명령 위치로 본다',
+    '$s = @"\ngit push\n"@\nInvoke-Expression $s': '줄 시작 git 을 명령 위치로 본다(here-string 본문 포함)',
+}
+
 
 def star_height(pattern: str) -> int:
     """정규식의 무한 반복 중첩 깊이(star height). 2 이상이면 중첩 반복자다.
@@ -531,25 +766,144 @@ class GeminiPolicySafetyTest(unittest.TestCase):
                         re.compile(rule[key])
 
     def test_policy_covers_bypass_patterns(self):
-        # Given 훅이 막는 우회 패턴(2026-11-11) / When 정책 규칙(ask_user)을 적용 / Then 걸리고, 정상 명령은 걸리지 않는다
-        import re
+        # Given 위험 명령·정상 명령 / When Gemini 판정 흉내(JSON 직렬화 + '"command":"' 고정 + 셸 래퍼 재판정) / Then 위험만 걸린다.
+        # 정상 명령은 위험 단어가 든 description·dir_path 를 붙여도 걸리면 안 된다(명령 값 밖으로 새지 않음)
         rules = [r for _, _, r in self.load_rules() if r.get("decision") == "ask_user"]
-
-        def asks(command):
-            return any(any(command.startswith(p) for p in r.get("commandPrefix", []))
-                       or ("commandRegex" in r and re.search(r["commandRegex"], command)) for r in rules)
         for command in GEMINI_NEW_GATED:
-            with self.subTest(command=command):
-                self.assertTrue(asks(command))
+            for args in ({"command": command}, {"command": command, "description": "run it", "dir_path": "C:\\dev\\x y"}):
+                with self.subTest(args=args):
+                    self.assertTrue(gemini_policy_asks(rules, args))
         for command in GEMINI_NEW_PASSED:
-            with self.subTest(command=command):
-                self.assertFalse(asks(command))
+            for args in ({"command": command}, {"command": command, "description": GEMINI_LEAKY_DESCRIPTION,
+                                                 "dir_path": GEMINI_LEAKY_DIR_PATH, "is_background": None}):
+                with self.subTest(args=args):
+                    self.assertFalse(gemini_policy_asks(rules, args))
+
+    def test_loader_port_rejects_known_dropped_rules(self):
+        # Given Gemini 0.68.0 이 실제로 버린 규칙 7개·2026-11-09 거부 패턴·JS 비호환 문법 / When 이식한 로더 검사 / Then 거부
+        for pattern, reason in GEMINI_DROPPED_2026_11_18:
+            with self.subTest(pattern=pattern[:60]):
+                self.assertEqual(gemini_load_error(pattern), reason)
+        self.assertEqual(gemini_load_error(KNOWN_REJECTED), "unsafe")
+        self.assertEqual(gemini_load_error("x" * 2100), "too-long")
+        for pattern in (r"a\Z", r"\Aa", r"a*+", r"a{2}+", r"(?P<n>a)", r"(?i:a)"):
+            with self.subTest(pattern=pattern):
+                self.assertEqual(gemini_load_error(pattern), "invalid")
+        for pattern in (r"\bgit\b[^;&|\n]*\sstash\s+(?:drop|clear)\b", r"[Z]", r"\\Z", r"a+?", r"(?<=:\")rm"):
+            with self.subTest(pattern=pattern):
+                self.assertIsNone(gemini_load_error(pattern))
+
+    def test_command_regex_passes_gemini_loader(self):
+        # 모든 commandRegex 가 Gemini 로더 검사(JS 문법·길이·ReDoS 휴리스틱)를 통과해야 규칙이 실제로 집행된다
+        for name, index, rule in self.load_rules():
+            if "commandRegex" in rule:
+                with self.subTest(file=name, rule=index):
+                    self.assertIsNone(gemini_load_error(rule["commandRegex"]),
+                                      f"{name} rule[{index}] 를 Gemini 가 로드하지 못합니다: {rule['commandRegex']}")
+
+    def test_policy_matches_hook_samples(self):
+        # 훅 표본(SAMPLE_COMMANDS)을 Gemini 판정 흉내로 돌려, 훅과 다른 것은 GEMINI_KNOWN_GAPS·GEMINI_KNOWN_EXTRA_ASKS 에
+        # 적힌 것뿐이어야 한다(규칙이 나빠지면 새 차이가, 좋아지면 목록에서 지울 항목이 생긴다)
+        rules = [r for _, _, r in self.load_rules() if r.get("decision") == "ask_user"]
+        misses, extra = set(), set()
+        for command, *_, expected in SAMPLE_COMMANDS:
+            asked = gemini_policy_asks(rules, {"command": command})
+            if expected and not asked:
+                misses.add(command)
+            if asked and not expected:
+                extra.add(command)
+        self.assertEqual(sorted(misses), sorted(GEMINI_KNOWN_GAPS))
+        self.assertEqual(sorted(extra), sorted(GEMINI_KNOWN_EXTRA_ASKS))
+
+    def run_gemini_sim(self, cases, probes=()):
+        import json
+        import shutil
+        import subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node 가 없어 Gemini(JS) 판정 흉내를 건너뜁니다")
+        rules = [r for _, _, r in self.load_rules() if r.get("decision") == "ask_user"]
+        out = subprocess.run([node, "-e", GEMINI_POLICY_SIM_JS],
+                             input=json.dumps({"rules": rules, "cases": cases, "probes": list(probes)}),
+                             capture_output=True, text=True, encoding="utf-8", timeout=120)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return json.loads(out.stdout)
+
+    def test_policy_matches_in_node(self):
+        # Given Gemini 판정 코드를 그대로 옮긴 node 판정기 / Then 로드 실패 0, 위험 ASK, 정상 open, 훅 표본 차이는 목록과 같고,
+        # 버려졌던 7개는 거부
+        cases, expected = [], []
+        for command in GEMINI_NEW_GATED:
+            cases += [{"command": command}, {"command": command, "description": "run it", "dir_path": "C:\\dev\\x y"}]
+            expected += [True, True]
+        for command in GEMINI_NEW_PASSED:
+            cases += [{"command": command}, {"command": command, "description": GEMINI_LEAKY_DESCRIPTION,
+                                             "dir_path": GEMINI_LEAKY_DIR_PATH, "is_background": None}]
+            expected += [False, False]
+        for command, *_, hook_expected in SAMPLE_COMMANDS:
+            cases.append({"command": command})
+            expected.append(bool(hook_expected) != (command in GEMINI_KNOWN_GAPS or command in GEMINI_KNOWN_EXTRA_ASKS))
+        result = self.run_gemini_sim(cases, ['"command":"' + p for p, _ in GEMINI_DROPPED_2026_11_18])
+        self.assertEqual(result["dropped"], [], "Gemini(JS) 가 로드하지 못하는 규칙")
+        wrong = [(c["command"], "description" in c, e) for c, a, e in zip(cases, result["asks"], expected) if a != e]
+        self.assertEqual(wrong, [], "(명령, description 있음, 기대 ASK) 가 Gemini 판정과 다름")
+        self.assertEqual(result["probesSafe"], [False] * len(GEMINI_DROPPED_2026_11_18))
+
+    def test_policy_long_input_in_node(self):
+        # 긴 명령도 Gemini(JS) 판정이 규칙 전체에서 1초 안에 끝나야 한다. 훑기를 이어 붙이면 'git branch -d ' 8000번에
+        # 186초(리뷰 1차), 공백 반복을 나란히 두면 공백 4만 개에 12초(리뷰 2차) 걸렸다
+        n = 20000
+        big = [
+            # 2026-11-18 리뷰 1차: 훑기 연쇄·긴 반복
+            "echo " + "git " * 25000, "git status " + "a" * 100000, "echo " + "\\\"" * 30000, "python " + "x," * 50000,
+            "echo " + "git branch -d " * 8000, "echo " + "git checkout -- " * 7000, "echo " + "git checkout a b " * 7000,
+            "git " + "-C x " * 20000 + "push", "echo " + "git -C " * 16000, "git " + "-c\\\\" * 30000,
+            "\n".join(f"git branch -d feat/x-{i}" for i in range(4000)), "echo " + "(" * 50000,
+            "echo " + "git reset " * 10000, "echo " + "find . " * 15000,
+            # 2026-11-18 리뷰 2차: 긴 공백(나란한 공백 반복은 제곱으로 느려짐)·앞 단어·따옴표 옵션
+            "echo ;" + " " * 100000, "echo ;" + " " * (n * 2) + "x", "echo (" + " " * n + "x", "git status;" + " " * n + "git x",
+            "echo '" + " " * n + "x'", "git" + " " * n + "x", "git -C" + " " * n + "x", "find" + " " * n + "x",
+            "xargs" + " " * n + "x", "Start-Process" + " " * n + "x", "glab" + " " * n + "x", "glab api" + " " * n + "x",
+            "python" + " " * n + "x", "echo &" + " " * n + "&" + " " * n + "x", "echo {" + "\t" * n + "x",
+            "sudo" + " " * n + "unlink", ("git " + "-x y " * 8 + "z ") * 2000, "echo " + "; " * 30000,
+            "echo " + "\\n" * 30000, "git reset " + "-- " * 30000, "git checkout " + "-q " * 30000,
+            "$x" + " " * n + ".Delete", "echo " + "\t" * 100000, "echo " + "\\t" * 50000, "sudo " * 20000,
+            "FOO=1 " * 16000, "env " * 25000 + "x", "cmd /c " * 14000, "git -C " + "\"x\" " * 25000,
+            "git -c " + "a=\"b\" " * 16000, "git" + "\t" * 100000 + "push", "\"" + "a" * 100000, "/" * 100000,
+            "\\\\" * 50000, "C:\\" * 33000 + "rm",
+            # 2026-11-18 2차 리뷰: 셸 이름 뒤 긴 공백(셸 전달부와 뒤 \s* 가 같은 공백을 나눠 먹던 문제)
+            "pwsh -c" + " " * 100000 + "x", "bash" + " " * 100000 + "x", "cmd /c" + " " * 20000 + "x",
+        ]
+        result = self.run_gemini_sim([{"command": c, "description": GEMINI_LEAKY_DESCRIPTION} for c in big])
+        slow = [(c[:30], ms) for c, ms in zip(big, result["ms"]) if ms > 1000]
+        self.assertEqual(slow, [], "1초 넘게 걸린 입력")
 
     def test_regex_and_prefix_not_combined(self):
         # 문서: commandPrefix 와 commandRegex 는 한 규칙에 함께 쓸 수 없다
         for name, index, rule in self.load_rules():
             with self.subTest(file=name, rule=index):
                 self.assertFalse("commandPrefix" in rule and "commandRegex" in rule)
+
+    def test_allow_rule_only_atomic_branch_create(self):
+        # Given 허용 규칙(작업 브랜치 만들기) / When Gemini 판정 흉내 / Then 단일 명령만 허용되고 이어 붙인 명령은 허용되지 않는다
+        loaded = [r for _, _, r in self.load_rules()]
+        asks = [r for r in loaded if r.get("decision") == "ask_user"]
+        allows = [r for r in loaded if r.get("decision") == "allow" and "commandRegex" in r]
+        self.assertTrue(allows, "commandRegex 허용 규칙이 없습니다")
+
+        def allowed(command):
+            text = gemini_stringify_args({"command": command})
+            return (not gemini_policy_asks(asks, {"command": command})
+                    and any(re.search(p, text, re.ASCII) for r in allows for p in gemini_args_patterns(r)))
+        for command in ("git checkout -b feat/x", "git switch -c fix/y-1.2", "git checkout -b docs/readme"):
+            with self.subTest(command=command):
+                self.assertTrue(allowed(command))
+        for command in ("git checkout -b feat/x; git push", "git checkout -b feat/x && rm -rf y",
+                        "git checkout -b feat/x | sh", "git checkout -b feat/x$(rm -rf y)", "git checkout -b feat/x`rm x`",
+                        "git checkout -b feat/x\ngit push", "git checkout -b feat/x > out", "git checkout -b hack/x",
+                        "git checkout -b feat/x origin/main"):
+            with self.subTest(command=command):
+                self.assertFalse(allowed(command))
 
 
 GEMINI_NEW_GATED = ["git branch -Df x", "git branch --delete --force x", "git branch --force --delete x",
@@ -562,7 +916,135 @@ GEMINI_NEW_GATED = ["git branch -Df x", "git branch --delete --force x", "git br
                     "python - <<'EOF'\nimport shutil\nshutil.rmtree('build')\nEOF",
                     # 2026-11-13 리뷰 1차 보강(R2, R4)
                     "find . -print0 | xargs -0 -n1 unlink", "xargs -n1 unlink < list.txt", "sudo -u x unlink a",
-                    '/usr/bin/python3 -c "import shutil; shutil.rmtree(\'b\')"']
+                    '/usr/bin/python3 -c "import shutil; shutil.rmtree(\'b\')"',
+    # 2026-11-18 Gemini 실제 판정(JSON·명령 위치·대소문자·description 누출) 보강
+    'git checkout .',
+    'git checkout -- a.txt',
+    'git switch -f',
+    'git switch -f main',
+    'git branch -d -f x',
+    'git branch -d --force x',
+    'git branch -f -d x',
+    'git branch --force -d x',
+    'git branch -D x',
+    'git rebase main',
+    'git clean -fd',
+    'git reset --hard',
+    'git push',
+    'git merge fix/a',
+    'gh pr merge 1',
+    'glab mr merge 1',
+    'git restore a.txt',
+    'git restore --worktree --staged a',
+    'git stash drop',
+    'git pull --rebase',
+    'git update-ref -d refs/x',
+    'rm -rf x',
+    'Rm x',
+    'rm.exe -rf x',
+    'Remove-Item x',
+    'remove-item -Recurse x',
+    'REMOVE-ITEM x',
+    'RI x',
+    'del /q a.txt',
+    'del /S x',
+    'DEL /S x',
+    'del/S x',
+    'erase a.txt',
+    'ERASE a.txt',
+    'rd /s /q build',
+    'RD/s/q build',
+    'rmdir x',
+    'RMDIR /S x',
+    'cd x; rm -rf y',
+    'cd x && Remove-Item y',
+    'cd x\nrm -rf y',
+    'cd x; git checkout .',
+    'cd x && git switch -f',
+    'bash -c "git checkout ."',
+    'find . -delete',
+    'find . -delete -print',
+    'find . -execdir /bin/rm {} +',
+    'unlink f',
+    'unlink.exe f',
+    'xargs unlink',
+    'Start-Process git push',
+    'START-PROCESS git push',
+    'Start-Process -FilePath GIT.EXE -ArgumentList push',
+    'Start-Process "git" push',
+    'glab api -X PUT x',
+    'glab api -X post projects/1/x',
+    'GLAB API --method=DELETE x',
+    'glab api -X "POST" x',
+    "[IO.File]::Delete('a')",
+    "[io.file]::delete('a')",
+    "[System.IO.Directory]::Delete('a')",
+    "[SYSTEM.IO.Directory]::Delete('d', $true)",
+    '(Get-Item a.txt).delete()',
+    '$f.Delete()',
+    'node -e "fs.rmSync(\'x\')"',
+    'node -e "require(\'fs\').promises.rm(\'x\')"',
+    'deno eval "Deno.removeSync(\'x\')"',
+    'node -e "rimraf.sync(\'x\')"',
+    'echo "import shutil; shutil.rmtree(\'x\')" | python',
+    '& "C:\\Python312\\python.exe" -c "import os; os.remove(\'a\')"',
+    "python - <<'EOF'\nimport os, shutil\nshutil.rmtree('build')\nEOF",
+    'git -C . merge --abort',
+    'git --no-pager push',
+    'git -c a=b rebase origin/main',
+    'git.exe push',
+    '& "C:\\Program Files\\Git\\cmd\\git.exe" push',
+    'cmd /c "git push"',
+    'git reset -q --hard',
+    'git reset HEAD --hard',
+    'git checkout -qf main',
+    # 2026-11-18 2차 리뷰: HEAD 가 묻던 큰따옴표 위치 인자(회귀 방지)
+    'git checkout HEAD "src/a b.java"',
+    'git checkout "HEAD" src/a.java',
+    'git checkout main "x"',
+    'git -C C:\\work\\repo merge x',
+    'find . -name "*.tmp" -delete',
+    'python -c "import shutil;shutil.rmtree(\'x\')"',
+    'sudo git push',
+    'if true; then git push; fi',
+    '(git push)',
+                    # 2026-11-18 리뷰 2차: 앞 단어·환경변수·따옴표 옵션 값·셸 전달·탭·따옴표 속 git
+                    'sudo rm -rf build',
+                    'cd x && sudo rm -rf y',
+                    'FOO=1 rm -rf build',
+                    'env rm -rf build',
+                    'nohup rm -rf x',
+                    'time rm -rf x',
+                    'command rm -rf x',
+                    'exec rm x',
+                    'sudo Remove-Item x',
+                    'GIT_TERMINAL_PROMPT=0 git push origin HEAD',
+                    'env GIT_TRACE=1 git push',
+                    'timeout 60 git push',
+                    'nice -n 5 git push',
+                    'env git push',
+                    'wsl git push',
+                    'git -C "C:/dev/x" push',
+                    "git -C 'C:/dev/x y' push",
+                    'git -C "C:\\Program Files\\x" push -u origin HEAD',
+                    'git -c user.name="A B" push',
+                    'cmd /c "rm -rf x"',
+                    'cmd /c del x',
+                    'cmd /c "del /q x"',
+                    'cmd.exe /c del /s x',
+                    'cmd /c rd /s /q x',
+                    'pwsh -c "Remove-Item x"',
+                    "bash -lc 'rm -rf x'",
+                    'powershell -Command "Remove-Item x"',
+                    'pwsh -NoProfile -Command "git push"',
+                    'git\tpush',
+                    'git checkout "."',
+                    "git checkout '--' a.txt",
+                    '/usr/bin/rm -rf build',
+                    '"/bin/rm" -rf build',
+                    '"C:\\tools\\rm.exe" -rf build',
+                    'GIT push',
+                   ]
 GEMINI_NEW_PASSED = ["git checkout main && git pull --ff-only origin main", "git checkout -b fix/a origin/main",
                      "git branch -d fix/draft", "git checkout main 2>&1", "cd ri/x", "docker rm c1",
                      # 2026-11-13 같은 효과의 명령 대조
@@ -573,7 +1055,65 @@ GEMINI_NEW_PASSED = ["git checkout main && git pull --ff-only origin main", "git
                      # 2026-11-13 리뷰 1차 보강(R1, R4)
                      'grep -rn "repository.delete(" src', r"grep -rn '\.delete(' src/main/java",
                      "sed -i 's/repo.delete(x)/repo.deleteById(x)/' A.java", 'git log -S ".delete(" --oneline',
-                     'grep -rn "fs.rmSync(" packages/node', 'rg "os.remove(" src/py']
+                     'grep -rn "fs.rmSync(" packages/node', 'rg "os.remove(" src/py',
+    # 2026-11-18 Gemini 실제 판정(JSON·명령 위치·대소문자·description 누출) 보강
+    'git status',
+    'git log',
+    'python app.py',
+    'glab api projects',
+    'glab api -X GET projects/1',
+    'Start-Process notepad',
+    'Start-Process gitk',
+    "[IO.File]::Exists('a')",
+    'find . -exec grep x {} ;',
+    'echo unlinked',
+    'python -m pytest',
+    'cd model/s',
+    'git merge-base a b',
+    'git branch -f x origin/x',
+    'git branch --format=%d',
+    'rmx',
+    'rdx',
+    'delta',
+    'ripgrep x',
+    'git checkout main',
+    'git switch main',
+    'git stash list',
+    'npm run build',
+    'mvn test',
+    'git restore --staged a',
+    'git status\nnpm test -- --grep restore',
+    'git log -1\necho pull',
+    'git checkout main\ngit status',
+    'git commit -m "fix rm bug"',
+    'git commit -m "Merge pull request #1"',
+    'git commit -m "fix python shutil.rmtree bug"',
+    'git log --grep pull',
+    'git config --get pull.rebase',
+    'git add restore.py',
+    'echo "run git pull later"',
+    'git switch main\ngit pull --ff-only',
+    'git fetch\ngit log origin/main..HEAD --oneline\ngit status',
+    'git commit -m "rm기능 제거"',
+    'git log --format=%s -n 3\nWrite-Output "restore"',
+    'git commit -m "find -delete"',
+                     # 2026-11-18 리뷰 2차: 앞 단어·환경변수·따옴표 옵션 값·셸 전달·탭·따옴표 속 git
+                     'git commit -m "git push 전 확인 추가"',
+                     'grep -rn "git push" docs',
+                     'Write-Output "git push later"',
+                     'echo "git push origin main"',
+                     'cmd /c "echo \'git push\'"',
+                     'git checkout -b feat/x',
+                     'git switch -c fix/y',
+                     'grep -c rm notes.txt',
+                     'sudo -l',
+                     'env | sort',
+                     'timeout 5 npm test',
+                     'nice -n 5 npm test',
+                     'FOO=1 npm test',
+                     'cd build/rm',
+                     'ls node_modules/.bin/rm',
+                    ]
 
 
 class HookOutputEncodingTest(unittest.TestCase):

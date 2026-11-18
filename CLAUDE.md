@@ -12,7 +12,7 @@ Claude Code·Gemini CLI·agy·Codex 4개 CLI가 같은 5단계 유지보수 파�
   고칠 때는 원본을 고친 뒤 내보낸다. 저장소↔원본 대응은 `export_public_repo.py`의 `FILES`, `snippets()`, 그리고
   루트 `README.md`의 "구성" 표에 있다.
 - `config/*/*-snippet.json`은 실제 settings 파일에서 게이트 관련 키만 뽑은 것이다(`snippets()`).
-- 내보내기가 관리하지 않는 파일: 루트 `README.md`, `LICENSE`, `.gitignore`, 이 `CLAUDE.md`. 이들은 여기서 직접 고친다.
+- 내보내기가 관리하지 않는 파일: 루트 `README.md`, `LICENSE`, `.gitignore`, `CONTEXT.md`(용어·설계 결정·현재 상태), 이 `CLAUDE.md`. 이들은 여기서 직접 고친다.
 - 내보낼 때 홈 경로·Orca 계정 ID는 자리표시자(`os.path.expanduser(r"~\...")`, `C:/Users/<you>/`,
   `ORCA_CODEX_ACCOUNT_ID`, `<orca-claude-profile-id>`)로 바뀌고, 비공개 `~/.ai-gate/export-private.json`의
   치환표·금지어가 적용된다. 결과에 홈 사용자명·계정 ID·금지어·토큰 형태가 남으면 쓰지 않고 종료 코드 3으로 실패한다.

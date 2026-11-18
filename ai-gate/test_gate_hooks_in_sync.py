@@ -9,6 +9,8 @@ Claude·agy·Codex 훅은 같은 판정 목록(GATED), 따옴표 처리 규칙, 
 import importlib.util
 import os
 import re
+import shutil
+import subprocess
 import unittest
 
 HOOKS = {
@@ -1339,6 +1341,23 @@ class CodexHomeInSyncTest(unittest.TestCase):
                  if os.path.basename(p)[len(ORCA_RULES_PREFIX):] not in sources]
         self.assertEqual(stale, [], "원본이 없는 Orca 규칙 복사본입니다")
 
+    @unittest.skipUnless(shutil.which("codex"), "codex CLI 가 없습니다")
+    def test_execpolicy_prompts_branch_force_delete(self):
+        # Codex 훅은 기록만 하므로 실제로 막는 것은 execpolicy 규칙이다. 옵션을 쪼갠 강제 삭제도 prompt 여야 한다
+        import json
+        rules = os.path.join(CODEX_HOMES["global"], "rules", "default.rules")
+        cases = [("git branch -d -f x", "prompt"), ("git branch -f -d x", "prompt"),
+                 ("git branch -d --force x", "prompt"), ("git branch --force -d x", "prompt"),
+                 ("git branch --delete -f x", "prompt"), ("git branch -f --delete x", "prompt"),
+                 ("git branch --delete --force x", "prompt"), ("git branch --force --delete x", "prompt"),
+                 ("git branch -d x", None), ("git branch -f x main", None)]
+        for command, expected in cases:
+            with self.subTest(command=command):
+                out = subprocess.run([shutil.which("codex"), "execpolicy", "check", "--rules", rules, *command.split()],
+                                     capture_output=True, text=True, encoding="utf-8", timeout=60)
+                self.assertEqual(out.returncode, 0, out.stderr)
+                self.assertEqual(json.loads(out.stdout).get("decision"), expected)
+
 
 AGY_HOOKS_JSON = os.environ.get("NODE4_AGY_HOOKS_JSON", os.path.expanduser(r"~\.gemini\config\hooks.json"))
 GEMINI_SETTINGS = os.environ.get("NODE4_GEMINI_SETTINGS", os.path.expanduser(r"~\.gemini\settings.json"))
@@ -1439,6 +1458,10 @@ AGY_DENY_SAMPLES = [
     ('grep -rn "repository.delete(" src', False), (r"grep -rn '\.delete(' src/main/java", False),
     ("sed -i 's/repo.delete(x)/repo.deleteById(x)/' A.java", False), ('git log -S ".delete(" --oneline', False),
     ('grep -rn "fs.rmSync(" packages/node', False), ('rg "os.remove(" src/py', False),
+    # 2026-11-18 강제 삭제 옵션을 쪼갠 형태
+    ("git branch -d -f x", True), ("git branch -f -d x", True), ("git branch -d --force x", True),
+    ("git branch --force -d x", True), ("git branch -d x -f", True),
+    ("git branch -d feat-f", False), ("git branch -d -v x", False), ("git branch -f x main", False),
 ]
 
 

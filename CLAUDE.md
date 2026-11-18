@@ -35,8 +35,8 @@ python ai-gate/test_gate_hooks_in_sync.py GateHooksInSyncTest.test_verdict_on_sa
 
 테스트는 기본적으로 **설치된 위치**(`~/.claude/hooks/...`, `~/.gemini/...`, `~/.codex/...`)의 파일을 읽는다.
 저장소 안의 훅을 대상으로 돌리려면 `NODE4_CLAUDE_HOOK`, `NODE4_AGY_HOOK`, `NODE4_CODEX_HOOK`,
-`NODE4_GEMINI_POLICY_DIR` 등 환경변수로 경로를 바꾼다(전체 목록은 `ai-gate/README.md`). Orca 관련 묶음은
-`ORCA_CODEX_ACCOUNT_ID`가 필요하다. README 표·스킬 마스터 검사는 스크립트 옆 파일(`__file__` 기준)을 읽는다.
+`NODE4_GEMINI_POLICY_DIR` 등 환경변수로 경로를 바꾼다(전체 목록은 `ai-gate/README.md`). Orca Codex 검사는
+`ORCA_CODEX_ACCOUNT_ID`(또는 `NODE4_ORCA_CODEX_HOME`)로 가리킨 홈 폴더가 있을 때만 하고, 없으면 건너뛴다. README 표·스킬 마스터 검사는 스크립트 옆 파일(`__file__` 기준)을 읽는다.
 
 ## 큰 그림
 

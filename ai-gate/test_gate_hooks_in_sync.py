@@ -1276,6 +1276,9 @@ CODEX_HOMES = {
         "NODE4_ORCA_CODEX_HOME",
         os.path.join(os.path.expanduser(r"~\AppData\Roaming\orca\codex-accounts"), os.environ.get("ORCA_CODEX_ACCOUNT_ID", "<orca-codex-account-id>"), r"home")),
 }
+# Orca 를 안 쓰는 PC(공개 저장소 사본에서 ORCA_CODEX_ACCOUNT_ID 미지정 포함)는 Orca 쪽 검사를 건너뛴다
+ORCA_CODEX_MISSING = not os.path.isdir(CODEX_HOMES["orca"])
+SKIP_ORCA_CODEX = "Orca Codex 홈이 없습니다(ORCA_CODEX_ACCOUNT_ID 또는 NODE4_ORCA_CODEX_HOME 로 지정)"
 ORCA_HOOK_MARK = "/.orca/agent-hooks/"  # Orca 가 자기 상태 표시용으로 넣는 훅(전역에는 없어도 됨)
 ORCA_RULES_PREFIX = "_orca-global-"     # Orca 가 ~/.codex/rules/<이름> 을 복사해 두는 파일 이름 접두어
 
@@ -1298,11 +1301,13 @@ class CodexHomeInSyncTest(unittest.TestCase):
                       for event, groups in data.get("hooks", {}).items()
                       for group in groups for handler in group.get("hooks", []))
 
+    @unittest.skipIf(ORCA_CODEX_MISSING, SKIP_ORCA_CODEX)
     def test_global_hooks_present_in_orca(self):
         g, o = (self.hook_items(CODEX_HOMES[n]) for n in ("global", "orca"))
         missing = [item for item in g if item not in o]
         self.assertEqual(missing, [], "전역 hooks.json 의 훅이 Orca 홈 hooks.json 에 없습니다")
 
+    @unittest.skipIf(ORCA_CODEX_MISSING, SKIP_ORCA_CODEX)
     def test_orca_extra_hooks_are_orca_status_only(self):
         g, o = (self.hook_items(CODEX_HOMES[n]) for n in ("global", "orca"))
         extra = [item for item in o if item not in g and ORCA_HOOK_MARK not in item[2]]
@@ -1310,11 +1315,14 @@ class CodexHomeInSyncTest(unittest.TestCase):
 
     def test_gate_hooks_registered(self):
         for name, home in CODEX_HOMES.items():
+            if name == "orca" and ORCA_CODEX_MISSING:
+                continue
             items = self.hook_items(home)
             with self.subTest(home=name):
                 self.assertTrue(any(e == "PreToolUse" and "node4-approval-gate-codex.py" in h for e, m, h in items))
                 self.assertTrue(any(e == "PostToolUse" and "sync_test_hook.py" in h for e, m, h in items))
 
+    @unittest.skipIf(ORCA_CODEX_MISSING, SKIP_ORCA_CODEX)
     def test_rules_mirrored(self):
         import glob
         g_dir, o_dir = (os.path.join(CODEX_HOMES[n], "rules") for n in ("global", "orca"))

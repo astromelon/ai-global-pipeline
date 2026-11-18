@@ -19,11 +19,13 @@ HOME = os.path.expanduser("~")
 APPDATA = os.environ.get("APPDATA", os.path.join(HOME, "AppData", "Roaming"))
 HERE = os.path.dirname(os.path.abspath(__file__))
 MASTER_DIR = os.environ.get("NODE4_PROMPT_SKILLS_MASTER", os.path.join(HERE, "prompt-skills"))
+ORCA_CODEX_HOME = os.path.join(APPDATA, "orca", "codex-accounts", os.environ.get("ORCA_CODEX_ACCOUNT_ID", "<orca-codex-account-id>"), "home")
 TARGET_DIRS = [
     os.path.join(HOME, ".claude", "skills"),
     os.path.join(HOME, ".codex", "skills"),
-    os.path.join(APPDATA, "orca", "codex-accounts", os.environ.get("ORCA_CODEX_ACCOUNT_ID", "<orca-codex-account-id>"), "home", "skills"),
 ]
+if os.path.isdir(ORCA_CODEX_HOME):  # Orca 를 안 쓰는 PC(계정 id 미지정 포함)는 건너뛴다
+    TARGET_DIRS.append(os.path.join(ORCA_CODEX_HOME, "skills"))
 if os.environ.get("NODE4_PROMPT_SKILLS_TARGETS"):  # 검증용 덮어쓰기 (os.pathsep 구분)
     TARGET_DIRS = os.environ["NODE4_PROMPT_SKILLS_TARGETS"].split(os.pathsep)
 

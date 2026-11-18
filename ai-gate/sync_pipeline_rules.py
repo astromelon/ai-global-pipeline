@@ -17,12 +17,14 @@ import sys
 HOME = os.path.expanduser("~")
 APPDATA = os.environ.get("APPDATA", os.path.join(HOME, "AppData", "Roaming"))
 MASTER = os.environ.get("NODE4_PIPELINE_MASTER", os.path.join(HOME, ".ai-global-pipeline.md"))
+ORCA_CODEX_HOME = os.path.join(APPDATA, "orca", "codex-accounts", os.environ.get("ORCA_CODEX_ACCOUNT_ID", "<orca-codex-account-id>"), "home")
 TARGETS = [
     os.path.join(HOME, ".claude", "CLAUDE.md"),
     os.path.join(HOME, ".gemini", "GEMINI.md"),
     os.path.join(HOME, ".codex", "AGENTS.md"),
-    os.path.join(APPDATA, "orca", "codex-accounts", os.environ.get("ORCA_CODEX_ACCOUNT_ID", "<orca-codex-account-id>"), "home", "AGENTS.md"),
 ]
+if os.path.isdir(ORCA_CODEX_HOME):  # Orca 를 안 쓰는 PC(계정 id 미지정 포함)는 건너뛴다
+    TARGETS.append(os.path.join(ORCA_CODEX_HOME, "AGENTS.md"))
 if os.environ.get("NODE4_PIPELINE_TARGETS"):  # 검증용 덮어쓰기 (os.pathsep 구분)
     TARGETS = os.environ["NODE4_PIPELINE_TARGETS"].split(os.pathsep)
 HEADING = re.compile(r"^# Global Maintenance Pipeline\b", re.MULTILINE)

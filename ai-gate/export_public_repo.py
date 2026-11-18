@@ -170,9 +170,22 @@ def compare(repo: Path, files: dict) -> tuple:
                if not (repo / rel).exists() or normalize((repo / rel).read_text(encoding="utf-8")) != normalize(text)]
     existing = {p.relative_to(repo).as_posix() for p in repo.rglob("*")
                 if p.is_file() and ".git" not in p.relative_to(repo).parts and "__pycache__" not in p.parts}
-    stale = sorted(rel for rel in existing - set(files)
-                   if rel.split("/", 1)[0] in MANAGED_DIRS)
-    return changed, stale
+    stale = [rel for rel in sorted(existing - set(files)) if rel.split("/", 1)[0] in MANAGED_DIRS]
+    ignored = git_ignored(repo, stale)  # --test 가 저장소 사본 훅 옆에 남기는 *.log 등은 커밋 대상이 아니다
+    return changed, [rel for rel in stale if rel not in ignored]
+
+
+def git_ignored(repo: Path, rels: list) -> set:
+    """rels 중 .gitignore 로 무시되는 경로. 추적 중인 파일은 무시 대상이 아니다. git 이 판정 못 하면 빈 집합."""
+    if not rels:
+        return set()
+    try:
+        # --stdin 은 Git for Windows 에서 일부 줄을 빠뜨려(2026-11-18 실측) 경로를 인자로 넘긴다
+        r = subprocess.run(["git", "-C", str(repo), "check-ignore", "--", *rels],
+                           capture_output=True, text=True, encoding="utf-8")
+    except OSError:
+        return set()
+    return set(r.stdout.splitlines()) if r.returncode in (0, 1) else set()
 
 
 def repo_test_env(repo: Path) -> dict:
